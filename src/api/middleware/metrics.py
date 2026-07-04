@@ -12,7 +12,7 @@ llm_request_latency_seconds = Histogram(
 # Cost approximations ($ per 1k tokens) for simulation
 COST_MAPPING = {
     "phi3:latest": 0.0001,
-    "llama3:latest": 0.0002
+    "llama3.2:3b": 0.0002
 }
 
 llm_token_cost_dollars = Counter(
