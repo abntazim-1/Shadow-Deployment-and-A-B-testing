@@ -9,10 +9,8 @@ from src.core.logging import logger
 class RoutingDecision(BaseModel):
     routing_mode: str  # "control", "challenger", "shadow"
     primary_model_name: str
-    primary_url: str
     shadow_enabled: bool = False
     shadow_model_name: Optional[str] = None
-    shadow_url: Optional[str] = None
 
 def load_router_config() -> dict:
     config_path = Path("config/router_config.yaml")
@@ -34,16 +32,13 @@ def determine_route(user_id: str) -> RoutingDecision:
     if is_challenger_assigned(user_id, settings.experiment_salt, challenger_weight):
         return RoutingDecision(
             routing_mode="challenger",
-            primary_model_name=settings.shadow_model_name,
-            primary_url=str(settings.shadow_llm_url)
+            primary_model_name=settings.shadow_model_name
         )
         
     # 3. Baseline / Shadow assignment
     return RoutingDecision(
         routing_mode="shadow" if shadow_enabled_global else "control",
         primary_model_name=settings.primary_model_name,
-        primary_url=str(settings.primary_llm_url),
         shadow_enabled=bool(shadow_enabled_global),
-        shadow_model_name=settings.shadow_model_name if shadow_enabled_global else None,
-        shadow_url=str(settings.shadow_llm_url) if shadow_enabled_global else None
+        shadow_model_name=settings.shadow_model_name if shadow_enabled_global else None
     )

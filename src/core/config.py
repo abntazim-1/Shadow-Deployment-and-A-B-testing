@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import HttpUrl
+
 
 class Settings(BaseSettings):
     experiment_salt: str
@@ -8,11 +8,13 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     sqlite_db_path: str = "sqlite:///./evaluations.db"
     
-    primary_llm_url: HttpUrl
     primary_model_name: str
-    
-    shadow_llm_url: HttpUrl
     shadow_model_name: str
+    
+    gemini_api_key: str | None = None
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    groq_api_key: str | None = None
     
     shadow_enabled_global: bool = True
     challenger_traffic_weight: float = 0.5

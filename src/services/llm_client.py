@@ -1,7 +1,7 @@
-import httpx
 import asyncio
 import time
 import random
+import litellm
 from typing import Dict
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 from src.core.logging import logger
@@ -11,31 +11,31 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.cooldown_secs = cooldown_secs
         
-        # State tracking per model URL
+        # State tracking per model name
         self._failures: Dict[str, int] = {}
         self._last_failure_time: Dict[str, float] = {}
 
-    def is_open(self, url: str) -> bool:
-        failures = self._failures.get(url, 0)
+    def is_open(self, model: str) -> bool:
+        failures = self._failures.get(model, 0)
         if failures >= self.failure_threshold:
-            last_fail = self._last_failure_time.get(url, 0)
+            last_fail = self._last_failure_time.get(model, 0)
             if time.time() - last_fail < self.cooldown_secs:
                 return True
             else:
                 # Cooldown expired, half-open state
-                self._failures[url] = self.failure_threshold - 1
+                self._failures[model] = self.failure_threshold - 1
                 return False
         return False
 
-    def record_failure(self, url: str):
-        self._failures[url] = self._failures.get(url, 0) + 1
-        self._last_failure_time[url] = time.time()
-        logger.warning("Circuit breaker recorded failure", url=url, failures=self._failures[url])
+    def record_failure(self, model: str):
+        self._failures[model] = self._failures.get(model, 0) + 1
+        self._last_failure_time[model] = time.time()
+        logger.warning("Circuit breaker recorded failure", model=model, failures=self._failures[model])
 
-    def record_success(self, url: str):
-        if url in self._failures:
-            self._failures[url] = 0
-            self._last_failure_time[url] = 0
+    def record_success(self, model: str):
+        if model in self._failures:
+            self._failures[model] = 0
+            self._last_failure_time[model] = 0
 
 # Singleton instance
 cb = CircuitBreaker()
@@ -59,37 +59,36 @@ async def synthetic_fallback_response(prompt: str, model_name: str) -> str:
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=10),
-    retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
+    retry=retry_if_exception_type(Exception),
     reraise=True
 )
-async def _execute_http_request(url: str, payload: dict, timeout: float):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, json=payload, timeout=timeout)
-        response.raise_for_status()
-        return response.json()
+async def _execute_llm_request(model_name: str, prompt: str, timeout: float):
+    # litellm will automatically pick up API keys from the environment variables
+    # mapped by pydantic or directly set in the .env file.
+    response = await litellm.acompletion(
+        model=model_name,
+        messages=[{"role": "user", "content": prompt}],
+        timeout=timeout
+    )
+    return response.choices[0].message.content
 
-async def generate_completion(model_name: str, url: str, prompt: str, is_shadow: bool = False) -> str:
+async def generate_completion(model_name: str, prompt: str, is_shadow: bool = False) -> str:
     """
-    Makes the async call to Ollama.
+    Makes the async call to the LLM API using litellm.
     Falls back to synthetic response on failure.
     """
-    if cb.is_open(url):
-        logger.warning("Circuit breaker is OPEN. Fast-failing to synthetic fallback.", url=url)
+    if cb.is_open(model_name):
+        logger.warning("Circuit breaker is OPEN. Fast-failing to synthetic fallback.", model=model_name)
         return await synthetic_fallback_response(prompt, model_name)
         
     # Shadow requests can tolerate longer timeouts
     timeout = 60.0 if is_shadow else 30.0
-    payload = {
-        "model": model_name,
-        "prompt": prompt,
-        "stream": False
-    }
 
     try:
-        response_data = await _execute_http_request(url, payload, timeout)
-        cb.record_success(url)
-        return response_data.get("response", "")
+        response_text = await _execute_llm_request(model_name, prompt, timeout)
+        cb.record_success(model_name)
+        return response_text
     except Exception as e:
-        logger.error("LLM request failed", model=model_name, url=url, error=str(e))
-        cb.record_failure(url)
+        logger.error("LLM request failed", model=model_name, error=str(e))
+        cb.record_failure(model_name)
         return await synthetic_fallback_response(prompt, model_name)

@@ -24,17 +24,17 @@ llm_token_cost_dollars = Counter(
 llm_circuit_breaker_state = Gauge(
     'llm_circuit_breaker_state',
     'Circuit breaker state (0=closed, 1=open)',
-    ['url']
+    ['model_name']
 )
 
 async def metrics_middleware(request: Request, call_next):
     # Update gauges on every request
-    llm_circuit_breaker_state.labels(url=str(settings.primary_llm_url)).set(
-        1 if cb.is_open(str(settings.primary_llm_url)) else 0
+    llm_circuit_breaker_state.labels(model_name=settings.primary_model_name).set(
+        1 if cb.is_open(settings.primary_model_name) else 0
     )
     if settings.shadow_enabled_global:
-        llm_circuit_breaker_state.labels(url=str(settings.shadow_llm_url)).set(
-            1 if cb.is_open(str(settings.shadow_llm_url)) else 0
+        llm_circuit_breaker_state.labels(model_name=settings.shadow_model_name).set(
+            1 if cb.is_open(settings.shadow_model_name) else 0
         )
         
     return await call_next(request)

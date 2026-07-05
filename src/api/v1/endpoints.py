@@ -29,12 +29,11 @@ async def background_shadow_task(
     control_model: str,
     control_response: str, 
     control_latency_ms: float, 
-    shadow_model: str, 
-    shadow_url: str
+    shadow_model: str
 ):
     try:
         start_time = time.time()
-        shadow_response = await generate_completion(shadow_model, shadow_url, prompt, is_shadow=True)
+        shadow_response = await generate_completion(shadow_model, prompt, is_shadow=True)
         shadow_latency_ms = (time.time() - start_time) * 1000
         
         logger.info("Shadow execution completed", 
@@ -75,7 +74,6 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
     start_time = time.time()
     response_text = await generate_completion(
         route_decision.primary_model_name, 
-        route_decision.primary_url, 
         request.prompt,
         is_shadow=False
     )
@@ -87,7 +85,7 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
     cost = (tokens / 1000.0) * COST_MAPPING.get(route_decision.primary_model_name, 0.0)
     llm_token_cost_dollars.labels(model_name=route_decision.primary_model_name).inc(cost)
     
-    if route_decision.shadow_enabled and route_decision.shadow_model_name and route_decision.shadow_url:
+    if route_decision.shadow_enabled and route_decision.shadow_model_name:
         background_tasks.add_task(
             background_shadow_task,
             trace_id=trace_id,
@@ -95,8 +93,7 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks):
             control_model=route_decision.primary_model_name,
             control_response=response_text,
             control_latency_ms=primary_latency_ms,
-            shadow_model=route_decision.shadow_model_name,
-            shadow_url=route_decision.shadow_url
+            shadow_model=route_decision.shadow_model_name
         )
         
     return PredictResponse(
