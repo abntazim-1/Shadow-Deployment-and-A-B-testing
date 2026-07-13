@@ -2,6 +2,8 @@
 
 A production-grade, real-time shadow deployment and A/B testing framework for Large Language Models (LLMs). This framework enables engineering and research teams to safely evaluate challenger LLM APIs against a production control model — with **zero impact to end-user latency** — and make data-driven model promotion decisions backed by rigorous statistical analysis.
 
+![CI](https://github.com/abntazim-1/Shadow-Deployment-and-A-B-testing/actions/workflows/ci.yml/badge.svg)
+
 ---
 
 ## Table of Contents
@@ -30,12 +32,15 @@ Deploying a new LLM to production carries real risk. A model that scores well on
 **Shadow Deployment solves this.** It mirrors production traffic to a challenger model running entirely in the background. Your users always receive responses from your trusted primary (control) model. The challenger processes the same prompts in parallel, invisibly, and its outputs are recorded, evaluated, and compared against the primary.
 
 This framework implements that pattern end-to-end with:
-- A **FastAPI gateway** that routes and forks traffic
-- A **Redis queue** for decoupled, non-blocking background processing
-- A **Python evaluation worker** that computes quality and statistical metrics
-- A **SQLite database** for durable, restartable experiment history
-- A **Prometheus + Grafana** observability stack for real-time dashboards
+- A **FastAPI gateway** that routes and forks traffic, with per-IP rate limiting and full input validation
+- A **Redis queue** (connection-pooled, with dead-letter queue) for decoupled, non-blocking background processing
+- A **Python evaluation worker** with bounded concurrency (semaphore) and startup warmup from SQLite history
+- A **SQLite database** (WAL mode) for durable, concurrent-safe experiment history with full lifecycle tracking
+- A **Prometheus + Grafana** observability stack with LLM-appropriate histogram buckets and queue depth alerting
+- **RFC 7807 Problem Details** error responses and `X-Trace-Id` header propagation for end-to-end request correlation
+- **Automatic promotion signals** when statistical significance + meaningful effect size are both detected
 - Support for **any LLM API provider** (Groq, OpenAI, Gemini, Anthropic, etc.) via `litellm`
+- **GitHub Actions CI** that runs linting, tests, and a Docker build check on every push
 
 ---
 
@@ -44,10 +49,13 @@ This framework implements that pattern end-to-end with:
 ```
                         [ Client Request ]
                                 │
+                     [slowapi: 60 req/min/IP]
+                                │
                                 ▼
                   ┌─────────────────────────────┐
                   │    FastAPI API Gateway       │
                   │  (Auth + Metrics Middleware) │
+                  │  X-Trace-Id header returned  │
                   └──────────────┬──────────────┘
                                  │
            ┌─────────────────────┴──────────────────────┐
@@ -55,35 +63,31 @@ This framework implements that pattern end-to-end with:
   ┌─────────────────┐                          ┌──────────────────────┐
   │  Control Model  │                          │   Challenger Model   │
   │  (Primary API)  │                          │    (Shadow API)      │
-  │  e.g. Groq      │                          │  e.g. Gemini         │
   └────────┬────────┘                          └──────────┬───────────┘
            │                                              │
            ▼                                              ▼
   ┌─────────────────┐                          ┌──────────────────────┐
-  │  Instant User   │                          │   Execution Record   │
-  │   Response      │                          │  (prompt + response  │
-  └─────────────────┘                          │   + latency_ms)      │
-                                               └──────────┬───────────┘
-                                                          │
-                                                          ▼
-                                               ┌──────────────────────┐
-                                               │     Redis Queue      │
-                                               │  (llm_shadow_queue)  │
-                                               └──────────┬───────────┘
+  │  Instant User   │                          │  Redis Queue         │
+  │  Response +     │                          │  (pooled client,     │
+  │  X-Trace-Id     │                          │   dead-letter queue) │
+  └─────────────────┘                          └──────────┬───────────┘
                                                           │
                                                           ▼
                                                ┌──────────────────────┐
                                                │  Evaluation Worker   │
-                                               │   (Python Process)   │
+                                               │  (semaphore: 10x     │
+                                               │   concurrent, SQLite │
+                                               │   warmup on start)   │
                                                └──────┬───────┬───────┘
                                                       │       │
                                            ┌──────────┘       └──────────┐
                                            ▼                              ▼
                                   ┌────────────────┐           ┌──────────────────┐
-                                  │  Prometheus    │           │ SQLite Database  │
-                                  │  (Metrics)     │           │ (Audit History)  │
-                                  └───────┬────────┘           └──────────────────┘
-                                          │
+                                  │  Prometheus    │           │ SQLite (WAL mode)│
+                                  │  (LLM buckets  │           │ evaluations +    │
+                                  │   queue depth) │           │ experiments +    │
+                                  └───────┬────────┘           │ audit events     │
+                                          │                    └──────────────────┘
                                           ▼
                                   ┌────────────────┐
                                   │    Grafana     │
@@ -97,16 +101,19 @@ This framework implements that pattern end-to-end with:
 
 **A single incoming request triggers the following sequence:**
 
-1. **Receive** — The FastAPI gateway receives a `POST /api/v1/predict` request from a client.
-2. **Route** — The router uses a deterministic SHA-256 hash of the `user_id` to decide the execution strategy:
+1. **Rate Limit** — `slowapi` checks the caller's IP: max 60 requests/minute. Exceeding returns `429 Too Many Requests`.
+2. **Receive** — The FastAPI gateway receives `POST /api/v1/predict`. Input is validated (`user_id` ≤ 256 chars, `prompt` ≤ 8000 chars).
+3. **Trace** — A UUID `trace_id` is generated and bound into the structlog context. All subsequent log lines carry it automatically.
+4. **Route** — The router uses a deterministic SHA-256 hash of the `user_id` to decide the execution strategy (config is cached for 5s with double-checked locking):
    - **`shadow` mode** — The primary model serves the user; the challenger runs in the background.
-   - **`challenger` mode** — The user is silently served by the challenger model (A/B split, if configured).
+   - **`challenger` mode** — The user is silently served by the challenger model (full A/B split).
    - **`control` mode** — Only the primary model runs (shadow disabled globally).
-3. **Execute Primary** — The control model (e.g., Groq Llama) is called synchronously. The response is immediately returned to the user. Total user-facing latency is determined solely by this step.
-4. **Fork Shadow** — A `BackgroundTask` is created, firing the challenger model call (e.g., Gemini) asynchronously. The user has already received their response and is unaffected.
-5. **Enqueue** — Once the challenger responds, the full payload (prompt, both responses, both latencies) is pushed to a Redis list (`llm_shadow_queue`).
-6. **Evaluate** — The independently running evaluation worker pops the payload from the queue, computes quality and statistical metrics, and persists the result to SQLite.
-7. **Observe** — Prometheus scrapes the `/metrics` endpoint every 5 seconds. Grafana visualizes latency, cost, and circuit breaker health in real time.
+5. **Execute Primary** — The control model is called synchronously via the circuit-breaker-guarded `litellm` client. The response is immediately returned to the user with an `X-Trace-Id` header.
+6. **Fork Shadow** — A `BackgroundTask` fires the challenger call. The user has already received their response and is completely unaffected.
+7. **Enqueue** — Once the challenger responds, the full payload is pushed to `llm_shadow_queue` in Redis.
+8. **Evaluate** — The evaluation worker (up to 10 in parallel via semaphore) dequeues the payload, computes quality and statistical metrics, and persists the result to SQLite. Failed evaluations go to `llm_shadow_queue:dead_letter` — never silently dropped.
+9. **Signal** — If `p < 0.05` AND `|Cohen's d| > 0.5`, a `promotion_signal` event is written to the `experiment_events` audit table automatically.
+10. **Observe** — Prometheus scrapes `/metrics` every 5 seconds, including queue depth and LLM-appropriate latency histograms. Grafana visualizes it in real time.
 
 ---
 
@@ -114,39 +121,43 @@ This framework implements that pattern end-to-end with:
 
 ```
 .
+├── .github/
+│   └── workflows/
+│       └── ci.yml                # GitHub Actions: lint + test + Docker build on every push
+│
 ├── config/
-│   ├── router_config.yaml        # Live experiment controls (hot-reloadable)
+│   ├── router_config.yaml        # Live experiment controls (hot-reloadable, 5s TTL cache)
 │   └── prometheus.yml            # Prometheus scrape target configuration
 │
 ├── deployments/
-│   ├── docker-compose.yml        # Redis, Prometheus, Grafana (resource-limited)
+│   ├── docker-compose.yml        # Redis, API gateway, evaluation worker, Prometheus, Grafana
 │   └── grafana/
 │       └── provisioning/
 │           ├── dashboards/
-│           │   ├── dashboard.yml          # Grafana dashboard auto-provisioning config
-│           │   └── shadow_dashboard.json  # Pre-built Shadow Testing Dashboard
+│           │   ├── dashboard.yml
+│           │   └── shadow_dashboard.json
 │           └── datasources/
-│               └── datasource.yml         # Prometheus datasource auto-provisioning
+│               └── datasource.yml
 │
 ├── src/
-│   ├── main.py                   # FastAPI application entrypoint
+│   ├── main.py                   # FastAPI app: lifespan, RFC7807 error handler, rate limiter
 │   │
 │   ├── api/
 │   │   ├── v1/
-│   │   │   ├── endpoints.py      # POST /api/v1/predict — primary predict endpoint
-│   │   │   ├── admin.py          # GET|POST /admin/config — protected admin controls
+│   │   │   ├── endpoints.py      # POST /api/v1/predict — input validation, trace ID, rate limit
+│   │   │   ├── admin.py          # Admin API: config, experiment lifecycle, dead-letter inspect
 │   │   │   └── health.py         # GET /healthz (liveness), GET /readyz (readiness)
 │   │   └── middleware/
-│   │       ├── auth.py           # X-Admin-Key API key verification dependency
-│   │       └── metrics.py        # Prometheus metric definitions and scrape middleware
+│   │       ├── auth.py           # X-Admin-Key API key verification
+│   │       └── metrics.py        # Prometheus metrics: LLM buckets, cost, CB state, queue depth
 │   │
 │   ├── core/
 │   │   ├── config.py             # Pydantic Settings — fail-fast env variable loader
-│   │   ├── exceptions.py         # Unified HTTP exception handlers
-│   │   └── logging.py            # Structlog JSON logging with request trace IDs
+│   │   ├── exceptions.py         # HTTP exception hierarchy
+│   │   └── logging.py            # Structlog JSON logging (called from lifespan, not import)
 │   │
 │   ├── routing/
-│   │   ├── router.py             # Routing decision engine (hot-reloads YAML config)
+│   │   ├── router.py             # Routing engine with 5s TTL cache + double-checked locking
 │   │   └── strategies.py         # Deterministic SHA-256 A/B bucket assignment
 │   │
 │   ├── services/
@@ -154,22 +165,22 @@ This framework implements that pattern end-to-end with:
 │   │   └── queue_client.py       # Fire-and-forget Redis enqueue wrapper
 │   │
 │   ├── evaluation/
-│   │   ├── evaluator.py          # Worker main loop — dequeues and processes payloads
+│   │   ├── evaluator.py          # Worker: semaphore concurrency, SQLite warmup, dead-letter
 │   │   └── metrics/
-│   │       ├── statistical.py    # Welch's t-test + Cohen's d effect size
-│   │       └── quality.py        # Token counting and response quality checks
+│   │       ├── statistical.py    # Welch's t-test + Cohen's d + promotion signal
+│   │       └── quality.py        # Token counting + ROUGE-L lexical overlap
 │   │
 │   └── storage/
-│       ├── redis_store.py        # Async Redis enqueue/dequeue for the shadow queue
-│       └── sqlite_store.py       # Durable SQLite persistence for evaluation history
+│       ├── redis_store.py        # Pooled Redis client, enqueue, dead-letter push, queue depth
+│       └── sqlite_store.py       # WAL-mode SQLite: evaluations, experiments, audit events
 │
 ├── tests/
-│   ├── unit/                     # Unit tests: routing, hashing, statistics
-│   └── integration/              # Integration tests: full pipeline lifecycle
+│   ├── conftest.py               # Session-scoped temp DB fixture (test isolation)
+│   ├── unit/                     # Routing, hashing, statistics, circuit breaker
+│   └── integration/              # Full pipeline: predict, admin, trace ID, RFC7807, lifecycle
 │
-├── .env                          # Your local secrets (gitignored)
-├── .env.example                  # Safe template — commit this, not .env
-├── .pre-commit-config.yaml       # ruff (lint) + mypy (type check) hooks
+├── Dockerfile                    # python:3.11-slim production image
+├── Makefile                      # dev | worker | test | lint
 ├── requirements.txt
 └── README.md
 ```
@@ -184,8 +195,7 @@ The primary endpoint is `POST /api/v1/predict`. It accepts:
 ```json
 {
   "user_id": "usr_alpha_9921",
-  "prompt": "Summarize the key principles of quantum mechanics.",
-  "session_id": "sess_01J0F2991"
+  "prompt": "Summarize the key principles of quantum mechanics."
 }
 ```
 And immediately returns:
@@ -193,16 +203,26 @@ And immediately returns:
 {
   "response": "Quantum mechanics describes...",
   "routing_mode": "shadow",
-  "model_used": "groq/llama-3.1-8b-instant"
+  "model_used": "groq/llama-3.1-8b-instant",
+  "trace_id": "f3a2b1c0-..."
 }
 ```
-The shadow invocation of the challenger model and all downstream evaluation steps happen entirely after this response has been sent.
+With response header:
+```
+X-Trace-Id: f3a2b1c0-...
+```
+
+The `trace_id` appears in every log line for that request, in the response body, and in the HTTP header — enabling complete end-to-end correlation from client to logs.
+
+**Input validation** (enforced by Pydantic `Field`):
+- `user_id`: 1–256 characters
+- `prompt`: 1–8000 characters — prevents a single request from burning your entire LLM API budget
 
 ---
 
 ### 2. Traffic Router (`src/routing/router.py`, `src/routing/strategies.py`)
 
-The router makes a deterministic, stateful routing decision per user. The same user always lands in the same traffic bucket across requests, preventing session contamination.
+The router makes a deterministic, stateful routing decision per user. The same user always lands in the same traffic bucket, preventing session contamination.
 
 **Algorithm:**
 ```python
@@ -211,33 +231,40 @@ bucket = int(SHA256(hash_input).hexdigest(), 16) % 100
 is_challenger = bucket < (CHALLENGER_TRAFFIC_WEIGHT * 100)
 ```
 
-The router hot-reloads `config/router_config.yaml` on every request. This means you can change the `challenger_traffic_weight` or flip `shadow_enabled_global` to `false` (an emergency kill switch) without restarting the application.
+The router caches `config/router_config.yaml` with a **5-second TTL** and **double-checked locking** — at 1,000 req/s, this reduces file I/O from 1,000 reads/s to 1 read every 5 seconds while staying thread-safe.
 
 ---
 
 ### 3. LLM Client (`src/services/llm_client.py`)
 
-Built on top of **[litellm](https://github.com/BerriAI/litellm)**, which provides a unified interface to all major LLM API providers. Swapping the model requires only changing the model name string in `.env` — no code changes.
+Built on **[litellm](https://github.com/BerriAI/litellm)**. Swap providers by changing one `.env` line — no code changes.
 
-**Supported out of the box:** Groq, OpenAI, Google Gemini, Anthropic Claude, Azure OpenAI, Mistral, Cohere, and [100+ others](https://docs.litellm.ai/docs/providers).
+**Supported:** Groq, OpenAI, Google Gemini, Anthropic Claude, Azure OpenAI, Mistral, and [100+ others](https://docs.litellm.ai/docs/providers).
 
 Built-in resilience:
-- **Timeouts:** 30s for the primary model, 60s for the shadow (shadow can tolerate more latency since it doesn't block the user).
-- **Retry with exponential backoff:** Up to 3 attempts via `tenacity` on transient errors.
-- **Circuit Breaker:** After 5 consecutive failures, the circuit opens and stops dispatching to the failing model for a 60-second cooldown. Prevents cascading failures and runaway error logs.
-- **Synthetic fallback:** If all retries and the circuit breaker are exhausted, a mathematically-simulated synthetic response is returned so the evaluator still has data to work with.
+- **Timeouts:** 30s for primary, 60s for shadow (shadow can tolerate more latency).
+- **Retry with exponential backoff:** Up to 3 attempts via `tenacity`.
+- **Circuit Breaker:** After 5 consecutive failures, the circuit opens for a 60-second cooldown. Prevents cascading failures.
+- **Synthetic fallback:** Returns a simulated response so the evaluator still receives data even when all retries fail.
 
 ---
 
 ### 4. Evaluation Worker (`src/evaluation/evaluator.py`)
 
-A standalone Python process that runs independently from the API gateway. It uses `BRPOP` (blocking pop) on the Redis queue, so it consumes zero CPU when idle.
+A long-running process (also runnable as a Docker service) that uses `BRPOP` on Redis, consuming zero CPU when idle.
+
+**Key production features:**
+- **Startup warmup:** On boot, queries the last 1,000 latency pairs from SQLite and pre-fills the statistical windows — statistical state survives restarts.
+- **Bounded concurrency:** A `asyncio.Semaphore(10)` limits parallel evaluations to 10, preventing queue bursts from spawning unbounded coroutines.
+- **Dead-letter queue:** Any payload that fails processing is pushed to `llm_shadow_queue:dead_letter` with the error reason and timestamp. Nothing is ever silently lost.
+- **Graceful shutdown:** On `SIGTERM`, the worker gets 10 seconds to finish in-flight evaluations before exiting.
 
 For each dequeued payload, it:
-1. **Computes quality metrics** — Token count for both responses, token differential, and a check for empty/null outputs.
-2. **Appends to a sliding statistical window** — Maintains the last 1,000 latency samples per arm.
-3. **Runs statistical tests** — Once ≥ 30 samples have accumulated, it runs a Welch's t-test + Cohen's *d* and logs a structured warning if the latency difference is statistically significant.
-4. **Persists to SQLite** — Every evaluated pair is written as a durable row in `evaluations.db`, surviving worker restarts.
+1. **Computes quality metrics** — Token counts, token differential, empty-response check, and **ROUGE-L** lexical overlap score between control and challenger responses.
+2. **Appends to sliding window** — `deque(maxlen=1000)` per arm — O(1) trim, no manual pop.
+3. **Runs Welch's t-test + Cohen's d** — Once ≥ 30 samples accumulated.
+4. **Fires promotion signal** — If `p < 0.05` AND `|d| > 0.5`, writes a `promotion_signal` event to the audit table.
+5. **Persists to SQLite** — WAL mode allows concurrent reads from the API without locking.
 
 ---
 
@@ -245,45 +272,66 @@ For each dequeued payload, it:
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| **Ephemeral Queue** | Redis (`llm_shadow_queue`) | Buffer between API gateway and evaluation worker. Fast, in-memory, non-blocking. |
-| **Durable History** | SQLite (`evaluations.db`) | Permanent record of every control/challenger pair. Survives container restarts. Queryable with any SQL tool. |
-| **Experiment Audit Log** | SQLite (`experiment_events`) | Records every admin configuration change (weight updates, kill-switch toggles) with timestamps. |
+| **Ephemeral Queue** | Redis `llm_shadow_queue` | Pooled client (20 connections, 5s timeout, auto-retry). Non-blocking buffer between gateway and worker. |
+| **Dead-Letter Queue** | Redis `llm_shadow_queue:dead_letter` | Failed evaluations stored with error + timestamp. Inspectable via `/admin/dead-letter`. |
+| **Durable History** | SQLite `evaluations` table (WAL mode) | Every control/challenger pair. Concurrent-safe. Survives restarts. |
+| **Experiment Lifecycle** | SQLite `experiments` table | Named experiments with control/challenger model, start time, end time, and promotion outcome. |
+| **Audit Log** | SQLite `experiment_events` table | Every config change and promotion signal, timestamped. |
 
 ---
 
 ### 6. Admin API (`src/api/v1/admin.py`)
 
-All `/admin/*` routes are protected by API key authentication (`X-Admin-Key` header). Allows dynamic experiment control without redeployment.
+All `/admin/*` routes require `X-Admin-Key` header. Errors return **RFC 7807 Problem Details** format.
 
-| Endpoint | Method | Action |
+| Endpoint | Method | Description |
 |---|---|---|
-| `/admin/config` | `GET` | Retrieve current router config (traffic weights, shadow flag) |
+| `/admin/config` | `GET` | Retrieve current router config |
 | `/admin/config` | `POST` | Update traffic weight or toggle shadow globally |
+| `/admin/experiment/summary` | `GET` | Live Welch's t-test result from last 1,000 evaluations |
+| `/admin/experiment/start` | `POST` | Register a named experiment (writes to `experiments` table) |
+| `/admin/experiment/stop` | `POST` | Mark experiment complete with outcome (`promote_challenger` / `retain_control` / `inconclusive`) |
+| `/admin/dead-letter` | `GET` | Inspect last 50 failed evaluation payloads |
 
-**Example — Disable Shadow Testing Immediately:**
+**Example — Check live experiment status:**
+```bash
+curl http://localhost:8000/admin/experiment/summary \
+  -H "X-Admin-Key: your_admin_key"
+```
+```json
+{
+  "status": "success",
+  "samples": 847,
+  "statistics": {
+    "p_value": 0.0003,
+    "t_statistic": -4.12,
+    "cohens_d": -0.87,
+    "significant": true
+  }
+}
+```
+
+**Example — Emergency kill switch:**
 ```bash
 curl -X POST http://localhost:8000/admin/config \
   -H "X-Admin-Key: your_admin_key" \
   -H "Content-Type: application/json" \
   -d '{"shadow_enabled_global": false}'
 ```
+Takes effect within **5 seconds** (TTL cache) — no redeploy needed.
 
 ---
 
 ## Metrics & Observability
 
-The framework exposes the following Prometheus metrics at `GET /metrics`:
-
 | Metric | Type | Labels | Description |
 |---|---|---|---|
-| `llm_request_latency_seconds` | Histogram | `model_name`, `routing_mode` | Full request duration per model, broken down by traffic type |
-| `llm_token_cost_dollars_total` | Counter | `model_name` | Simulated cost accumulator based on token counts |
+| `llm_request_latency_seconds` | Histogram | `model_name`, `routing_mode` | LLM latency with custom buckets `[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0]` |
+| `llm_token_cost_dollars_total` | Counter | `model_name` | Estimated cost using real provider pricing (Groq, Gemini, OpenAI, Anthropic) |
 | `llm_circuit_breaker_state` | Gauge | `model_name` | `0` = closed (healthy), `1` = open (failing) |
+| `redis_evaluation_queue_depth` | Gauge | — | Current pending items in the evaluation queue — alert if growing |
 
-Prometheus scrapes every **5 seconds**. The pre-built Grafana dashboard auto-provisions at startup and shows:
-- **LLM Latency (avg over 1m)** — Time-series line graph comparing all models
-- **Circuit Breaker State** — Stat panel with red/green threshold indicators
-- **Total Simulated Cost ($)** — Running cost accumulator per model
+> **Note:** Histogram buckets are tuned for LLM workloads (100ms–60s range). Default Prometheus buckets cluster at sub-100ms and are meaningless for LLM latency distributions.
 
 ---
 
@@ -303,7 +351,7 @@ Prometheus scrapes every **5 seconds**. The pre-built Grafana dashboard auto-pro
 ### Step 1 — Clone & Set Up the Environment
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/abntazim-1/Shadow-Deployment-and-A-B-testing.git
 cd "Shadow Deployment and AB testing"
 
 python -m venv venv
@@ -325,11 +373,9 @@ Open `.env` and fill in your API keys:
 EXPERIMENT_SALT=your_random_secure_salt_here
 ADMIN_API_KEY=your_secure_admin_key_here
 
-# LLM Configuration
 PRIMARY_MODEL_NAME=groq/llama-3.1-8b-instant
 SHADOW_MODEL_NAME=gemini/gemini-2.5-flash
 
-# API Keys
 GROQ_API_KEY=gsk_...
 GEMINI_API_KEY=AIza...
 ```
@@ -340,25 +386,21 @@ GEMINI_API_KEY=AIza...
 docker compose -f deployments/docker-compose.yml up -d
 ```
 
-This starts Redis (port 6379), Prometheus (port 9090), and Grafana (port 3000) with memory limits.
+Starts Redis (6379), Prometheus (9090), and Grafana (3000).
 
 ### Step 4 — Start the API Gateway
 
 ```bash
-venv\Scripts\uvicorn src.main:app --reload
+make dev
+# or: uvicorn src.main:app --reload
 ```
-
-The server starts at `http://127.0.0.1:8000`.
 
 ### Step 5 — Start the Evaluation Worker
 
-Open a **second terminal** and run:
-
 ```bash
-venv\Scripts\python -m src.evaluation.evaluator
+make worker
+# or: python -m src.evaluation.evaluator
 ```
-
-The worker listens to the Redis queue and processes shadow payloads in the background.
 
 ### Step 6 — Send a Test Request
 
@@ -366,7 +408,14 @@ The worker listens to the Redis queue and processes shadow payloads in the backg
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/predict" `
   -Method Post `
   -Headers @{"Content-Type"="application/json"} `
-  -Body '{"user_id": "user_alpha_001", "prompt": "Explain the concept of shadow deployment."}'
+  -Body '{"user_id": "user_alpha_001", "prompt": "Explain shadow deployment."}'
+```
+
+### Step 7 — Run Tests
+
+```bash
+make test
+# or: pytest tests/ -v
 ```
 
 ---
@@ -377,27 +426,27 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/predict" `
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `EXPERIMENT_SALT` | ✅ | — | Random string used to seed the SHA-256 A/B bucket hash. Change this to re-randomize user assignments. |
-| `ADMIN_API_KEY` | ✅ | — | Secret key for the protected `/admin/*` routes. |
+| `EXPERIMENT_SALT` | ✅ | — | Seed for SHA-256 A/B bucket hash. Change to re-randomize user assignments. |
+| `ADMIN_API_KEY` | ✅ | — | Secret key for all `/admin/*` routes. |
 | `REDIS_URL` | — | `redis://localhost:6379/0` | Redis connection URL |
 | `SQLITE_DB_PATH` | — | `sqlite:///./evaluations.db` | SQLite file path |
-| `PRIMARY_MODEL_NAME` | ✅ | — | litellm model string for the control (primary) model |
-| `SHADOW_MODEL_NAME` | ✅ | — | litellm model string for the challenger (shadow) model |
-| `SHADOW_ENABLED_GLOBAL` | — | `true` | Global switch. Set to `false` to disable all shadow forking. |
-| `CHALLENGER_TRAFFIC_WEIGHT` | — | `0.5` | Fraction of traffic (0.0–1.0) to send directly to the challenger in A/B mode. |
-| `GROQ_API_KEY` | — | — | API key for Groq models |
-| `GEMINI_API_KEY` | — | — | API key for Google Gemini models |
-| `OPENAI_API_KEY` | — | — | API key for OpenAI models |
-| `ANTHROPIC_API_KEY` | — | — | API key for Anthropic Claude models |
+| `PRIMARY_MODEL_NAME` | ✅ | — | litellm model string for the control model |
+| `SHADOW_MODEL_NAME` | ✅ | — | litellm model string for the challenger model |
+| `SHADOW_ENABLED_GLOBAL` | — | `true` | Global kill switch for shadow forking |
+| `CHALLENGER_TRAFFIC_WEIGHT` | — | `0.5` | Fraction (0.0–1.0) of traffic routed directly to challenger |
+| `GROQ_API_KEY` | — | — | Groq API key |
+| `GEMINI_API_KEY` | — | — | Google Gemini API key |
+| `OPENAI_API_KEY` | — | — | OpenAI API key |
+| `ANTHROPIC_API_KEY` | — | — | Anthropic Claude API key |
 
 ### `config/router_config.yaml` (Hot-Reloaded)
 
 ```yaml
-shadow_enabled_global: true      # Set to false for emergency kill switch
-challenger_traffic_weight: 0.0   # Set > 0.0 to enable A/B split
+shadow_enabled_global: true      # false = emergency kill switch
+challenger_traffic_weight: 0.0   # > 0.0 enables A/B split
 ```
 
-Changes to this file take effect on the **next incoming request** without restarting the server.
+Changes take effect within **5 seconds** — no restart required.
 
 ---
 
@@ -406,37 +455,62 @@ Changes to this file take effect on the **next incoming request** without restar
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
 | `/` | `GET` | None | Health status ping |
-| `/healthz` | `GET` | None | Liveness probe (returns 200 if process is up) |
-| `/readyz` | `GET` | None | Readiness probe (checks Redis + SQLite; returns 503 if either is down) |
-| `/metrics` | `GET` | None | Prometheus metrics scrape endpoint |
-| `/api/v1/predict` | `POST` | None | Main prediction endpoint |
-| `/admin/config` | `GET` | `X-Admin-Key` | Get current router configuration |
-| `/admin/config` | `POST` | `X-Admin-Key` | Update traffic weights or kill switch |
-| `/docs` | `GET` | None | Interactive Swagger UI (auto-generated by FastAPI) |
+| `/healthz` | `GET` | None | Liveness probe |
+| `/readyz` | `GET` | None | Readiness probe (checks Redis + SQLite) |
+| `/metrics` | `GET` | None | Prometheus metrics |
+| `/api/v1/predict` | `POST` | None | Main prediction endpoint (rate limited: 60/min/IP) |
+| `/admin/config` | `GET/POST` | `X-Admin-Key` | Read/update router configuration |
+| `/admin/experiment/summary` | `GET` | `X-Admin-Key` | Live statistical test results |
+| `/admin/experiment/start` | `POST` | `X-Admin-Key` | Start a named experiment |
+| `/admin/experiment/stop` | `POST` | `X-Admin-Key` | Stop experiment with outcome |
+| `/admin/dead-letter` | `GET` | `X-Admin-Key` | Inspect failed evaluation payloads |
+| `/docs` | `GET` | None | Interactive Swagger UI |
+
+All error responses follow **RFC 7807 Problem Details**:
+```json
+{
+  "type": "https://httpstatuses.com/401",
+  "title": "Missing X-Admin-Key header",
+  "status": 401,
+  "detail": "Missing X-Admin-Key header",
+  "instance": "/admin/config"
+}
+```
 
 ---
 
 ## Running the Evaluation Worker
 
-The evaluation worker is a separate, long-running process. It must be started independently from the API gateway.
-
 ```bash
-# In a separate terminal
-venv\Scripts\python -m src.evaluation.evaluator
+make worker
 ```
 
-It runs indefinitely, processing one payload at a time from the Redis queue. It logs structured JSON to stdout. Once it has accumulated **≥ 30 samples** per arm, it will log statistical test results:
+The worker logs structured JSON to stdout. Once ≥ 30 samples accumulate, statistical results appear:
 
 ```json
 {
   "event": "Statistically significant latency difference detected!",
   "p_value": 0.0001,
-  "cohens_d": 2.4,
+  "cohens_d": -0.87,
   "level": "warning"
 }
 ```
 
-All processed records are also persisted to `evaluations.db` and can be queried directly:
+When both significance and effect size thresholds are met, a promotion signal is logged to the database:
+
+```json
+{
+  "event_type": "promotion_signal",
+  "details": {
+    "recommended_action": "promote_challenger",
+    "p_value": 0.0001,
+    "cohens_d": -0.87,
+    "sample_size": 847
+  }
+}
+```
+
+Query evaluation history directly:
 
 ```sql
 SELECT
@@ -451,33 +525,22 @@ GROUP BY control_model, challenger_model;
 
 ---
 
-## Viewing the Grafana Dashboard
-
-1. Open [http://localhost:3000](http://localhost:3000) in your browser.
-2. The dashboard auto-provisions at startup — no login required (anonymous access is enabled by default for local development).
-3. Navigate to **Dashboards → Shadow Testing Dashboard**.
-
-The dashboard refreshes every **5 seconds** and displays:
-- **LLM Latency (avg over 1m)** — A time-series chart showing average response latency per model and routing mode.
-- **Circuit Breaker State** — A live stat panel showing whether each model's circuit breaker is open (red) or closed (green).
-- **Total Simulated Cost ($)** — A running cost accumulator using token counts and approximate per-model pricing.
-
----
-
 ## Statistical Methodology
 
 The evaluation engine uses **Welch's two-sample t-test** (not Student's pooled t-test) because LLM latency distributions between different providers are rarely equal-variance. Welch's test is the correct default when equal-variance cannot be assumed.
 
 $$t = \frac{\bar{X}_1 - \bar{X}_2}{\sqrt{\frac{s_1^2}{n_1} + \frac{s_2^2}{n_2}}}$$
 
-Alongside the p-value, the framework computes **Cohen's *d*** as an effect size measure. A statistically significant result (p < 0.05) alone is not sufficient to justify a model promotion decision — with a large enough sample, even a 1ms difference can become significant. Cohen's *d* contextualizes the result:
+Alongside the p-value, the framework computes **Cohen's *d*** as an effect size measure. A statistically significant result (`p < 0.05`) alone is not sufficient — with enough samples, even a 1ms difference becomes significant. Cohen's *d* contextualizes whether the difference is worth acting on:
 
 | Cohen's *d* | Interpretation |
 |---|---|
-| < 0.2 | Negligible — likely not worth acting on |
+| < 0.2 | Negligible |
 | 0.2 – 0.5 | Small effect |
-| 0.5 – 0.8 | Medium effect |
-| > 0.8 | Large effect — strong signal to promote or reject |
+| **0.5 – 0.8** | **Medium — triggers promotion signal** |
+| > 0.8 | Large — strong signal to promote or reject |
+
+The framework automatically emits a `promotion_signal` audit event when `p < 0.05` AND `|d| > 0.5`, removing the need for manual experiment monitoring.
 
 ---
 
@@ -485,10 +548,19 @@ Alongside the p-value, the framework computes **Cohen's *d*** as an effect size 
 
 | Feature | Implementation |
 |---|---|
-| **Circuit Breaker** | After 5 consecutive failures, the challenger circuit opens for 60 seconds. Prevents a degraded API from overwhelming background queues. |
-| **Retry with backoff** | Up to 3 retries with exponential backoff via `tenacity`. Only retries transient errors, never validation errors. |
-| **Emergency Kill Switch** | Set `shadow_enabled_global: false` in `router_config.yaml`. Takes effect within one request — no redeploy. |
-| **Admin Auth** | All traffic-control endpoints require a static API key via `X-Admin-Key` header. |
-| **Fail-Fast Config** | App crashes immediately on startup if required environment variables are missing or malformed. No silent misconfigurations. |
-| **Structured Logging** | Every log line carries a request trace ID, enabling end-to-end correlation of a single request across both the control and shadow execution paths. |
-| **Memory-Limited Docker** | Redis (256 MB), Prometheus (512 MB), and Grafana (512 MB) all have hard memory caps in `docker-compose.yml`. |
+| **Rate Limiting** | `slowapi`: 60 requests/minute per IP. Returns `429` with standard headers. |
+| **Input Validation** | Pydantic `Field` constraints: `user_id` ≤ 256 chars, `prompt` ≤ 8000 chars. |
+| **Circuit Breaker** | After 5 consecutive failures, the circuit opens for 60 seconds. Per-model state. |
+| **Retry with backoff** | Up to 3 retries with exponential backoff via `tenacity`. |
+| **Dead-Letter Queue** | Failed evaluations pushed to `llm_shadow_queue:dead_letter`. Inspectable via API. |
+| **Emergency Kill Switch** | `shadow_enabled_global: false` in YAML. Takes effect within 5 seconds. |
+| **WAL Mode SQLite** | Readers never block writers. No `database is locked` under concurrent load. |
+| **Connection Pooling** | Redis client: 20-connection pool, 5s socket timeout, auto-retry on transient drops. |
+| **Graceful Shutdown** | Worker drains in-flight evaluations (10s timeout) before process exits. |
+| **Trace ID Propagation** | Every request gets a UUID trace_id in logs, response body, and `X-Trace-Id` header. |
+| **RFC 7807 Errors** | All API errors return Problem Details JSON (`type`, `title`, `status`, `detail`, `instance`). |
+| **Admin Auth** | All `/admin/*` routes require `X-Admin-Key` header. |
+| **Fail-Fast Config** | App crashes immediately on startup if required env vars are missing. |
+| **Structured Logging** | Structlog JSON — initialized in `lifespan`, not at import time, for clean test output. |
+| **Memory-Limited Docker** | Redis 256 MB, Prometheus 512 MB, Grafana 512 MB hard caps. |
+| **CI Pipeline** | GitHub Actions: `ruff` lint + `pytest` (with Redis service) + Docker build on every push. |
