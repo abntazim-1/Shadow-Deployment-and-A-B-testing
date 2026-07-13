@@ -1,5 +1,6 @@
 import tiktoken
 from typing import Dict, Any
+from rouge_score import rouge_scorer
 
 def get_token_count(text: str, model: str = "cl100k_base") -> int:
     """Calculates approximate token count using tiktoken."""
@@ -25,10 +26,15 @@ def calculate_quality_metrics(prompt: str, control_resp: str, challenger_resp: s
     challenger_empty = len(challenger_resp.strip()) == 0
     control_empty = len(control_resp.strip()) == 0
     
+    scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
+    scores = scorer.score(control_resp, challenger_resp)
+    rouge_l = scores['rougeL'].fmeasure
+    
     return {
         "control_tokens": control_tokens,
         "challenger_tokens": challenger_tokens,
         "token_differential": token_diff,
         "challenger_is_empty": challenger_empty,
-        "control_is_empty": control_empty
+        "control_is_empty": control_empty,
+        "rouge_l": rouge_l
     }

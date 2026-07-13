@@ -83,3 +83,80 @@ def test_kill_switch_verification(mock_llm_generation):
     client.post("/admin/config", 
                 headers={"X-Admin-Key": settings.admin_api_key},
                 json={"shadow_enabled_global": True})
+
+def test_experiment_summary_endpoint():
+    """Experiment summary returns correct structure even with no data."""
+    response = client.get(
+        "/admin/experiment/summary",
+        headers={"X-Admin-Key": settings.admin_api_key}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "samples" in data
+    assert "statistics" in data
+    # With no data, statistics should be None (< 30 samples threshold)
+    assert data["statistics"] is None or isinstance(data["statistics"], dict)
+
+def test_experiment_lifecycle_start_stop():
+    """Experiment start/stop endpoints write to the experiments table."""
+    start_res = client.post(
+        "/admin/experiment/start",
+        headers={"X-Admin-Key": settings.admin_api_key},
+        json={
+            "name": "gemini-vs-groq-q3",
+            "control_model": "gemini/gemini-2.5-flash",
+            "challenger_model": "groq/llama-3.1-8b-instant"
+        }
+    )
+    assert start_res.status_code == 200
+    experiment_id = start_res.json()["experiment_id"]
+    assert isinstance(experiment_id, int)
+
+    stop_res = client.post(
+        "/admin/experiment/stop",
+        headers={"X-Admin-Key": settings.admin_api_key},
+        json={"experiment_id": experiment_id, "outcome": "promote_challenger"}
+    )
+    assert stop_res.status_code == 200
+    assert stop_res.json()["outcome"] == "promote_challenger"
+
+def test_dead_letter_endpoint_reachable():
+    """Dead-letter queue endpoint is reachable and returns correct structure."""
+    response = client.get(
+        "/admin/dead-letter",
+        headers={"X-Admin-Key": settings.admin_api_key}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "items" in data
+
+def test_predict_returns_trace_id():
+    """Every predict response includes X-Trace-Id header and trace_id in body."""
+    res = client.post(
+        "/api/v1/predict",
+        json={"user_id": "trace-test-user", "prompt": "test prompt"}
+    )
+    assert res.status_code == 200
+    assert "X-Trace-Id" in res.headers
+    assert "trace_id" in res.json()
+    assert res.headers["X-Trace-Id"] == res.json()["trace_id"]
+
+def test_predict_validates_prompt_length():
+    """Prompt exceeding 8000 characters is rejected with 422."""
+    res = client.post(
+        "/api/v1/predict",
+        json={"user_id": "user-001", "prompt": "x" * 8001}
+    )
+    assert res.status_code == 422
+
+def test_rfc7807_error_format():
+    """Unauthorized requests return RFC 7807 Problem Details format."""
+    res = client.get("/admin/config")
+    assert res.status_code == 401
+    data = res.json()
+    assert "type" in data
+    assert "title" in data
+    assert "status" in data
+    assert data["status"] == 401

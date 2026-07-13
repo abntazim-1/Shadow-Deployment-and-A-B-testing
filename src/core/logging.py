@@ -27,6 +27,6 @@ def setup_logging():
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.INFO)
 
-# Run setup when imported
-setup_logging()
+# setup_logging() is called explicitly in main.py's lifespan,
+# not at import time, so tests can control logging independently.
 logger = structlog.get_logger()

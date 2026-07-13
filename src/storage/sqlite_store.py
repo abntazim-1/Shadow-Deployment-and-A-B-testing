@@ -7,8 +7,13 @@ from typing import Dict, Any
 def get_connection():
     # Parse the file path from the sqlite URL
     db_path = settings.sqlite_db_path.replace("sqlite:///", "")
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # WAL mode: readers never block writers and writers never block readers.
+    # Critical for concurrent API gateway + evaluation worker access.
+    # NORMAL sync is safe with WAL and significantly faster than FULL.
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
     return conn
 
 def init_db():
@@ -37,6 +42,20 @@ def init_db():
                 event_type TEXT NOT NULL,
                 details TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Experiment lifecycle table: tracks start, stop, and promotion outcome
+        # for each named experiment. Answers: "when did we start? what happened?"
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS experiments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                control_model TEXT NOT NULL,
+                challenger_model TEXT NOT NULL,
+                status TEXT DEFAULT 'running',
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ended_at TIMESTAMP,
+                outcome TEXT
             )
         """)
         conn.commit()
@@ -83,5 +102,18 @@ def log_experiment_event(event_type: str, details: dict):
     finally:
         conn.close()
 
-# Initialize schema
-init_db()
+# Initialize schema is now done via FastAPI lifespan in main.py
+
+def get_recent_dead_letters(limit: int = 50) -> list:
+    """Fetch recent items from the dead-letter queue for the admin endpoint."""
+    from src.storage.redis_store import redis_client
+    import asyncio, json
+    async def _fetch():
+        raw = await redis_client.lrange("llm_shadow_queue:dead_letter", 0, limit - 1)
+        return [json.loads(r) for r in raw]
+    # Run in a new event loop if called from sync context
+    try:
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(_fetch())
+    except RuntimeError:
+        return asyncio.run(_fetch())

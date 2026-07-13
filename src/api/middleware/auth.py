@@ -1,4 +1,4 @@
-from fastapi import Security, Security
+from fastapi import Security
 from fastapi.security import APIKeyHeader
 from src.core.config import settings
 from src.core.exceptions import UnauthorizedException

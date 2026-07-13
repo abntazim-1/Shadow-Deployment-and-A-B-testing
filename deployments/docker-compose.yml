@@ -11,6 +11,35 @@ services:
         limits:
           memory: 256M
 
+  api-gateway:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    container_name: shadow_api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    env_file:
+      - ../.env
+    volumes:
+      - ../config:/app/config
+
+  evaluation-worker:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    container_name: shadow_worker
+    command: python -m src.evaluation.evaluator
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    restart: unless-stopped
+    volumes:
+      - ../config:/app/config
+
+
   prometheus:
     image: prom/prometheus:latest
     container_name: shadow_prometheus

@@ -5,6 +5,8 @@ from pathlib import Path
 from src.core.config import settings
 from src.routing.strategies import is_challenger_assigned
 from src.core.logging import logger
+import time
+import threading
 
 class RoutingDecision(BaseModel):
     routing_mode: str  # "control", "challenger", "shadow"
@@ -12,15 +14,37 @@ class RoutingDecision(BaseModel):
     shadow_enabled: bool = False
     shadow_model_name: Optional[str] = None
 
+_config_cache: dict = {}
+_cache_loaded_at: float = 0.0
+CONFIG_TTL_SECONDS = 5.0
+# Lock prevents two concurrent threads from both seeing an expired cache
+# and both reading the YAML file simultaneously (classic TOCTOU race).
+_cache_lock = threading.Lock()
+
 def load_router_config() -> dict:
-    config_path = Path("config/router_config.yaml")
-    try:
-        if config_path.exists():
-            with open(config_path, "r") as f:
-                return yaml.safe_load(f) or {}
-    except Exception as e:
-        logger.error("Failed to load router config, using defaults", error=str(e))
-    return {}
+    global _config_cache, _cache_loaded_at
+    # Fast path: cache is warm, return immediately without acquiring lock.
+    if time.time() - _cache_loaded_at < CONFIG_TTL_SECONDS:
+        return _config_cache
+    
+    with _cache_lock:
+        # Double-check inside the lock: another thread may have refreshed
+        # the cache while we were waiting to acquire the lock.
+        if time.time() - _cache_loaded_at < CONFIG_TTL_SECONDS:
+            return _config_cache
+        
+        config_path = Path("config/router_config.yaml")
+        try:
+            if config_path.exists():
+                with open(config_path, "r") as f:
+                    _config_cache = yaml.safe_load(f) or {}
+                    _cache_loaded_at = time.time()
+                    return _config_cache
+        except Exception as e:
+            logger.error("Failed to load router config, using defaults", error=str(e))
+            
+        _cache_loaded_at = time.time()
+        return _config_cache
 
 def determine_route(user_id: str) -> RoutingDecision:
     # 1. Hot reload dynamic config
