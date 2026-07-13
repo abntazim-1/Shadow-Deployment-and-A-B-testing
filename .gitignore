@@ -5,9 +5,6 @@ venv/
 evaluations.db
 .pytest_cache/
 
-# Internal docs — only README.md should be tracked by git
-project_audit.md
-implementation_plan_v2.md
-CV_bullets.md
-CHANGELOG.md
-CONTRIBUTING.md
+# Ignore all markdown files except README
+*.md
+!README.md
