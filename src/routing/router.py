@@ -46,6 +46,12 @@ def load_router_config() -> dict:
         _cache_loaded_at = time.time()
         return _config_cache
 
+def invalidate_cache():
+    """Forces the config cache to be reloaded on the next check."""
+    global _cache_loaded_at
+    with _cache_lock:
+        _cache_loaded_at = 0.0
+
 def determine_route(user_id: str) -> RoutingDecision:
     # 1. Hot reload dynamic config
     dynamic_config = load_router_config()

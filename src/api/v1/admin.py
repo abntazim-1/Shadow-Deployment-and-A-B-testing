@@ -54,6 +54,9 @@ def update_config(config_update: RouterConfig):
 
         with open(CONFIG_PATH, "w") as f:
             yaml.safe_dump(current_config, f)
+            
+        from src.routing.router import invalidate_cache
+        invalidate_cache()
 
     # Log the audit event
     log_experiment_event(
