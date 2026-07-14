@@ -33,7 +33,7 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt ruff pytest httpx pytest-asyncio
 
       - name: Run linter (ruff)
         run: ruff check src/

@@ -107,7 +107,8 @@ def log_experiment_event(event_type: str, details: dict):
 def get_recent_dead_letters(limit: int = 50) -> list:
     """Fetch recent items from the dead-letter queue for the admin endpoint."""
     from src.storage.redis_store import redis_client
-    import asyncio, json
+    import asyncio
+    import json
     async def _fetch():
         raw = await redis_client.lrange("llm_shadow_queue:dead_letter", 0, limit - 1)
         return [json.loads(r) for r in raw]

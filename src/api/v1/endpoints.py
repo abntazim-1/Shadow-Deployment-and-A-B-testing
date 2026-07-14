@@ -7,8 +7,6 @@ import structlog
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-limiter = Limiter(key_func=get_remote_address)
-
 from src.routing.router import determine_route
 from src.core.logging import logger
 from src.services.llm_client import generate_completion
@@ -16,6 +14,7 @@ from src.services.queue_client import background_enqueue
 from src.api.middleware.metrics import llm_request_latency_seconds, llm_token_cost_dollars, COST_MAPPING
 from src.evaluation.metrics.quality import get_token_count
 
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 class PredictRequest(BaseModel):

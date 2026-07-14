@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Dict, Any
+from typing import Dict, Any
 from collections import deque
 from src.core.logging import logger
 from src.storage.redis_store import dequeue_evaluation, push_to_dead_letter
