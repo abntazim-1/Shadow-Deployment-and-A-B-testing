@@ -86,7 +86,8 @@ Return a valid JSON object strictly matching this schema:
         response = await litellm.acompletion(
             model=judge_model,
             messages=[{"role": "user", "content": judge_prompt}],
-            timeout=15.0,
+            timeout=10.0,
+            max_tokens=256,
             response_format={"type": "json_object"}
         )
         content = response.choices[0].message.content

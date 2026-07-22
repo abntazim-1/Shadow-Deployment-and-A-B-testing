@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,16 +9,22 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body {
+            font-family: 'Inter', sans-serif;
+        }
     </style>
 </head>
+
 <body class="bg-slate-950 text-slate-100 min-h-screen">
     <!-- Top Navigation Header -->
     <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
             <div class="flex items-center space-x-3">
                 <div class="p-2 bg-indigo-600 rounded-lg shadow-lg shadow-indigo-500/30">
-                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
                 </div>
                 <div>
                     <h1 class="text-xl font-bold text-white tracking-wide">LLM Shadow & Canary Platform</h1>
@@ -29,12 +36,15 @@
             <div class="flex items-center space-x-4">
                 <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-md border border-slate-700">
                     <span class="text-xs text-slate-400">Admin Key:</span>
-                    <input type="password" id="adminKey" value="secret_admin_key_123" class="bg-transparent text-xs text-white outline-none w-32 focus:w-48 transition-all">
+                    <input type="password" id="adminKey" value="local_admin_key_998877"
+                        class="bg-transparent text-xs text-white outline-none w-32 focus:w-48 transition-all">
                 </div>
-                <button onclick="fetchSystemState()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-md border border-slate-700 transition">
+                <button onclick="fetchSystemState()"
+                    class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-md border border-slate-700 transition">
                     Refresh State
                 </button>
-                <button onclick="emergencyKill()" class="px-3 py-1.5 bg-red-600/90 hover:bg-red-500 text-xs font-semibold text-white rounded-md shadow-md shadow-red-600/30 transition">
+                <button onclick="emergencyKill()"
+                    class="px-3 py-1.5 bg-red-600/90 hover:bg-red-500 text-xs font-semibold text-white rounded-md shadow-md shadow-red-600/30 transition">
                     Kill Switch (Stop Shadow)
                 </button>
             </div>
@@ -66,7 +76,13 @@
         <!-- Interactive Prediction Playground -->
         <section class="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-8">
             <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z">
+                    </path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
                 Interactive Prediction Playground
             </h2>
 
@@ -74,15 +90,24 @@
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div class="md:col-span-1">
                         <label class="block text-xs font-medium text-slate-400 mb-1">User ID (A/B Hash Key)</label>
-                        <input type="text" id="playUserId" value="usr_alpha_101" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none">
+                        <input type="text" id="playUserId" value="usr_alpha_101"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none">
                     </div>
                     <div class="md:col-span-3">
                         <div class="flex items-center justify-between mb-1">
                             <label class="block text-xs font-medium text-slate-400">Prompt Preset Shortcuts</label>
                             <div class="flex space-x-2">
-                                <button onclick="setPromptPreset('Explain the core principles of quantum mechanics in 2 bullet points.')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">Quantum</button>
-                                <button onclick="setPromptPreset('Summarize the benefits of shadow deployment vs traditional A/B testing.')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">Shadow Test</button>
-                                <button onclick="setPromptPreset('Contact user at john.doe@example.com or card 4532-1123-9842-1092 for account verification.')" class="text-xs bg-amber-900/40 hover:bg-amber-800/60 text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded transition">PII Scrubber Test</button>
+                                <button
+                                    onclick="setPromptPreset('Explain the core principles of quantum mechanics in 2 bullet points.')"
+                                    class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">Quantum</button>
+                                <button
+                                    onclick="setPromptPreset('Summarize the benefits of shadow deployment vs traditional A/B testing.')"
+                                    class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">Shadow
+                                    Test</button>
+                                <button
+                                    onclick="setPromptPreset('Contact user at john.doe@example.com or card 4532-1123-9842-1092 for account verification.')"
+                                    class="text-xs bg-amber-900/40 hover:bg-amber-800/60 text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded transition">PII
+                                    Scrubber Test</button>
                             </div>
                         </div>
                     </div>
@@ -90,13 +115,18 @@
 
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1">Prompt Text</label>
-                    <textarea id="playPrompt" rows="3" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white focus:border-indigo-500 outline-none font-mono">Explain the core principles of quantum mechanics in 2 bullet points.</textarea>
+                    <textarea id="playPrompt" rows="3"
+                        class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white focus:border-indigo-500 outline-none font-mono">Explain the core principles of quantum mechanics in 2 bullet points.</textarea>
                 </div>
 
                 <div class="flex justify-end">
-                    <button onclick="sendPlaygroundPrediction()" id="sendPlayBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-6 py-2.5 rounded-lg text-sm shadow-lg shadow-indigo-600/30 transition flex items-center gap-2">
+                    <button onclick="sendPlaygroundPrediction()" id="sendPlayBtn"
+                        class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-6 py-2.5 rounded-lg text-sm shadow-lg shadow-indigo-600/30 transition flex items-center gap-2">
                         <span>Send Test Prediction</span>
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                        </svg>
                     </button>
                 </div>
 
@@ -104,24 +134,55 @@
                 <div id="playResponseBox" class="hidden bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-2">
                         <div class="flex items-center space-x-3 text-xs">
-                            <span class="text-emerald-400 font-semibold bg-emerald-400/10 px-2 py-0.5 rounded border border-emerald-400/20">200 OK</span>
+                            <span
+                                class="text-emerald-400 font-semibold bg-emerald-400/10 px-2 py-0.5 rounded border border-emerald-400/20">200
+                                OK</span>
                             <span id="playTraceId" class="font-mono text-slate-400"></span>
                         </div>
                         <div class="flex items-center space-x-3 text-xs text-slate-400">
-                            <span>Mode: <strong id="playMode" class="text-indigo-400"></strong></span>
-                            <span>Model: <strong id="playModel" class="text-indigo-400"></strong></span>
+                            <span>Routing Mode: <strong id="playMode" class="text-indigo-400"></strong></span>
+                            <span>Served By (Primary): <strong id="playModel" class="text-indigo-400"></strong></span>
                             <span>Latency: <strong id="playLatency" class="text-white"></strong> ms</span>
                         </div>
+
                     </div>
 
                     <div>
                         <span class="text-xs text-slate-400 font-medium">Control Model Response (Synchronous):</span>
-                        <p id="playOutputText" class="text-sm text-slate-200 mt-1 whitespace-pre-wrap font-sans bg-slate-900/60 p-3 rounded border border-slate-800/60"></p>
+                        <p id="playOutputText"
+                            class="text-sm text-slate-200 mt-1 whitespace-pre-wrap font-sans bg-slate-900/60 p-3 rounded border border-slate-800/60">
+                        </p>
                     </div>
 
-                    <div class="text-xs text-amber-400/90 bg-amber-950/30 border border-amber-500/20 p-2.5 rounded flex items-center gap-2">
-                        <svg class="w-4 h-4 animate-spin text-amber-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        <span>Shadow evaluation enqueued to Redis! Background worker executing challenger completion & LLM-as-a-Judge scoring below...</span>
+                    <div id="shadowStatusBanner"
+                        class="text-xs text-amber-400/90 bg-amber-950/30 border border-amber-500/20 p-2.5 rounded flex items-center gap-2">
+                        <svg id="shadowBannerSpinner" class="w-4 h-4 animate-spin text-amber-400" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                            </path>
+                        </svg>
+                        <span id="shadowBannerText">Shadow evaluation enqueued to Redis! Background worker executing challenger completion & LLM-as-a-Judge scoring...</span>
+                    </div>
+
+                    <!-- Inline Live Shadow Result Box -->
+                    <div id="inlineShadowBox" class="hidden mt-3 pt-3 border-t border-slate-800/80 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-purple-400 flex items-center gap-1.5">
+                                <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                Challenger Model Response (Asynchronous Shadow):
+                            </span>
+                            <div class="flex items-center space-x-2 text-xs">
+                                <span id="inlineScore" class="text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20 font-medium"></span>
+                                <span id="inlineEquiv" class="text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded border border-cyan-400/20 font-medium"></span>
+                                <span id="inlineLatency" class="text-slate-400 font-mono"></span>
+                            </div>
+                        </div>
+                        <p id="inlineOutputText" class="text-sm text-slate-200 bg-purple-950/20 border border-purple-500/20 p-3 rounded-lg whitespace-pre-wrap font-sans"></p>
+                        <div id="inlineReasoningBox" class="text-xs text-slate-400 bg-slate-900/80 p-2.5 rounded border border-slate-800">
+                            <strong class="text-slate-300">LLM Judge Reasoning:</strong> <span id="inlineReasoningText"></span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -132,72 +193,146 @@
         <section class="bg-slate-900 border border-slate-800 rounded-xl p-6">
             <div class="flex items-center justify-between mb-6">
                 <h2 class="text-lg font-semibold text-white flex items-center gap-2">
-                    <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
+                        </path>
+                    </svg>
                     Live Side-by-Side Completion Inspector
                 </h2>
                 <div class="text-xs text-slate-400">Auto-refreshing every 5s</div>
             </div>
 
             <div id="evaluationList" class="space-y-4">
-                <div class="text-center py-8 text-slate-500 text-sm">No evaluation records found yet. Send requests to /api/v1/predict to see live LLM judge diffs.</div>
+                <div class="text-center py-8 text-slate-500 text-sm">No evaluation records found yet. Send requests to
+                    /api/v1/predict to see live LLM judge diffs.</div>
             </div>
         </section>
-    </main>
+        </main>
 
-    <script>
-        const getHeaders = () => ({
-            'X-Admin-Key': document.getElementById('adminKey').value,
-            'Content-Type': 'application/json'
-        });
+        <script>
+            const getHeaders = () => ({
+                'X-Admin-Key': document.getElementById('adminKey').value,
+                'Content-Type': 'application/json'
+            });
 
-        async function fetchSystemState() {
-            try {
-                // Fetch config
-                const cfgRes = await fetch('/admin/config', { headers: getHeaders() });
-                const cfg = await cfgRes.json();
-                document.getElementById('shadowStatus').innerText = cfg.shadow_enabled_global ? 'Active' : 'Disabled';
-                document.getElementById('shadowStatus').className = cfg.shadow_enabled_global ? 'text-2xl font-bold text-emerald-400' : 'text-2xl font-bold text-red-400';
-                document.getElementById('trafficWeight').innerText = `${((cfg.challenger_traffic_weight || 0) * 100).toFixed(0)}%`;
-
-                // Fetch canary status
-                const canRes = await fetch('/admin/canary/status', { headers: getHeaders() });
-                const canData = await canRes.json();
-                if (canData.canary) {
-                    document.getElementById('canaryStatus').innerText = canData.canary.status.toUpperCase();
-                    document.getElementById('canaryDetails').innerText = JSON.stringify(canData.canary, null, 2);
+            async function fetchSystemState() {
+                // 1. Fetch config
+                try {
+                    const cfgRes = await fetch('/admin/config', { headers: getHeaders() });
+                    if (cfgRes.ok) {
+                        const cfg = await cfgRes.json();
+                        const statusEl = document.getElementById('shadowStatus');
+                        if (statusEl) {
+                            statusEl.innerText = cfg.shadow_enabled_global ? 'Active' : 'Disabled';
+                            statusEl.className = cfg.shadow_enabled_global ? 'text-2xl font-bold text-emerald-400' : 'text-2xl font-bold text-red-400';
+                        }
+                        const weightEl = document.getElementById('trafficWeight');
+                        if (weightEl) {
+                            weightEl.innerText = `${((cfg.challenger_traffic_weight || 0) * 100).toFixed(0)}%`;
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error fetching config:", err);
                 }
 
-                // Fetch evaluations
-                const evRes = await fetch('/admin/evaluations/recent?limit=10', { headers: getHeaders() });
-                const evData = await evRes.json();
-                if (evData.items) {
-                    document.getElementById('evalCount').innerText = evData.count;
-                    renderEvaluations(evData.items);
+                // 2. Fetch canary status
+                try {
+                    const canRes = await fetch('/admin/canary/status', { headers: getHeaders() });
+                    if (canRes.ok) {
+                        const canData = await canRes.json();
+                        if (canData.canary) {
+                            const canaryStatusEl = document.getElementById('canaryStatus');
+                            if (canaryStatusEl) {
+                                canaryStatusEl.innerText = (canData.canary.status || 'IDLE').toUpperCase();
+                            }
+                            const canaryDetailsEl = document.getElementById('canaryDetails');
+                            if (canaryDetailsEl) {
+                                canaryDetailsEl.innerText = JSON.stringify(canData.canary, null, 2);
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error fetching canary status:", err);
                 }
-            } catch (err) {
-                console.error("Error fetching system state:", err);
-            }
-        }
 
-        function renderEvaluations(items) {
-            const container = document.getElementById('evaluationList');
-            if (!items.length) {
-                container.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">No evaluation records found yet. Send requests to /api/v1/predict to see live LLM judge diffs.</div>`;
-                return;
+                // 3. Fetch evaluations
+                try {
+                    const evRes = await fetch('/admin/evaluations/recent?limit=10', { headers: getHeaders() });
+                    if (evRes.ok) {
+                        const evData = await evRes.json();
+                        if (evData.items) {
+                            const evalCountEl = document.getElementById('evalCount');
+                            if (evalCountEl) {
+                                evalCountEl.innerText = evData.count;
+                            }
+                            renderEvaluations(evData.items);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error fetching evaluations:", err);
+                }
             }
-            container.innerHTML = items.map(ev => `
-                <div class="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4">
+
+            function renderEvaluations(items) {
+                const container = document.getElementById('evaluationList');
+                if (!container) return;
+                if (!items || !items.length) {
+                    container.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">No evaluation records found yet. Send requests to /api/v1/predict to see live LLM judge diffs.</div>`;
+                    return;
+                }
+
+                const matchingItem = window.currentTraceId && items.find(item => item.trace_id === window.currentTraceId);
+                if (matchingItem) {
+                    const banner = document.getElementById('shadowStatusBanner');
+                    const spinner = document.getElementById('shadowBannerSpinner');
+                    const bannerText = document.getElementById('shadowBannerText');
+                    if (banner && bannerText) {
+                        banner.className = "text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 p-2.5 rounded flex items-center gap-2 font-medium";
+                        if (spinner) spinner.classList.add('hidden');
+                        bannerText.innerText = "✓ Shadow evaluation complete! Challenger response & LLM-as-a-Judge score rendered inline below.";
+                    }
+                    
+                    const inlineBox = document.getElementById('inlineShadowBox');
+                    if (inlineBox) {
+                        inlineBox.classList.remove('hidden');
+                        document.getElementById('inlineOutputText').innerText = matchingItem.challenger_response || '';
+                        document.getElementById('inlineScore').innerText = `LLM Judge: ${typeof matchingItem.judge_score === 'number' ? matchingItem.judge_score.toFixed(1) : 'N/A'} / 5.0`;
+                        document.getElementById('inlineEquiv').innerText = `Equivalence: ${typeof matchingItem.semantic_equivalence === 'number' ? (matchingItem.semantic_equivalence * 100).toFixed(0) : 0}%`;
+                        document.getElementById('inlineLatency').innerText = `${typeof matchingItem.challenger_latency_ms === 'number' ? matchingItem.challenger_latency_ms.toFixed(0) : 0} ms`;
+                        document.getElementById('inlineReasoningText').innerText = matchingItem.judge_reasoning || '';
+                    }
+                }
+
+                const displayItems = (window.currentTraceId && matchingItem)
+                    ? items.filter(ev => ev.trace_id !== window.currentTraceId)
+                    : items;
+
+                if (!displayItems.length) {
+                    container.innerHTML = `<div class="text-center py-6 text-slate-500 text-sm">Active test evaluation displayed live in Playground above. Send more requests to populate history log below.</div>`;
+                    return;
+                }
+
+                container.innerHTML = displayItems.map(ev => {
+                    const cLat = typeof ev.control_latency_ms === 'number' ? ev.control_latency_ms.toFixed(0) : '0';
+                    const chLat = typeof ev.challenger_latency_ms === 'number' ? ev.challenger_latency_ms.toFixed(0) : '0';
+                    const eq = typeof ev.semantic_equivalence === 'number' ? (ev.semantic_equivalence * 100).toFixed(0) : '0';
+                    const timeStr = ev.created_at ? new Date(ev.created_at).toLocaleTimeString() : '';
+                    return `
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4 transition-all">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                         <div class="flex items-center space-x-3">
-                            <span class="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-1 rounded">Trace: ${ev.trace_id.substring(0,8)}...</span>
-                            <span class="text-xs text-slate-400">${new Date(ev.created_at).toLocaleTimeString()}</span>
+                            <span class="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-1 rounded">Trace: ${(ev.trace_id || '').substring(0, 8)}...</span>
+                            <span class="text-xs text-slate-400">${timeStr}</span>
                         </div>
                         <div class="flex items-center space-x-4 text-xs font-medium">
                             <span class="text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-md border border-amber-400/20">
-                                LLM Judge: ${ev.judge_score ? ev.judge_score.toFixed(1) : 'N/A'} / 5.0
+                                LLM Judge: ${typeof ev.judge_score === 'number' ? ev.judge_score.toFixed(1) : 'N/A'} / 5.0
                             </span>
                             <span class="text-cyan-400 bg-cyan-400/10 px-2.5 py-1 rounded-md border border-cyan-400/20">
-                                Equivalence: ${(ev.semantic_equivalence * 100).toFixed(0)}%
+                                Equivalence: ${eq}%
                             </span>
                         </div>
                     </div>
@@ -210,15 +345,15 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="bg-slate-900/40 border border-slate-800 rounded-lg p-3">
                             <div class="flex justify-between items-center text-xs text-indigo-400 font-semibold mb-2">
-                                <span>Control (${ev.control_model})</span>
-                                <span>${ev.control_latency_ms.toFixed(0)} ms</span>
+                                <span>Control (${escapeHtml(ev.control_model || '')})</span>
+                                <span>${cLat} ms</span>
                             </div>
                             <p class="text-xs text-slate-300 whitespace-pre-wrap">${escapeHtml(ev.control_response)}</p>
                         </div>
                         <div class="bg-slate-900/40 border border-slate-800 rounded-lg p-3">
                             <div class="flex justify-between items-center text-xs text-purple-400 font-semibold mb-2">
-                                <span>Challenger (${ev.challenger_model})</span>
-                                <span>${ev.challenger_latency_ms.toFixed(0)} ms</span>
+                                <span>Challenger (${escapeHtml(ev.challenger_model || '')})</span>
+                                <span>${chLat} ms</span>
                             </div>
                             <p class="text-xs text-slate-300 whitespace-pre-wrap">${escapeHtml(ev.challenger_response)}</p>
                         </div>
@@ -230,95 +365,113 @@
                         </div>
                     ` : ''}
                 </div>
-            `).join('');
-        }
-
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        }
-
-        async function startCanary() {
-            const name = document.getElementById('canaryExpName').value || 'canary_exp';
-            const score = parseFloat(document.getElementById('minJudgeScore').value) || 3.5;
-            await fetch('/admin/canary/start', {
-                method: 'POST',
-                headers: getHeaders(),
-                body: JSON.stringify({ experiment_name: name, min_judge_score: score })
-            });
-            fetchSystemState();
-        }
-
-        async function stepCanary() {
-            await fetch('/admin/canary/step', { method: 'POST', headers: getHeaders() });
-            fetchSystemState();
-        }
-
-        async function rollbackCanary() {
-            await fetch('/admin/canary/rollback', {
-                method: 'POST',
-                headers: getHeaders(),
-                body: JSON.stringify({ reason: 'Manual operator rollback' })
-            });
-            fetchSystemState();
-        }
-
-        function setPromptPreset(text) {
-            document.getElementById('playPrompt').value = text;
-        }
-
-        async function sendPlaygroundPrediction() {
-            const userId = document.getElementById('playUserId').value || 'usr_alpha_101';
-            const prompt = document.getElementById('playPrompt').value || 'Test prompt';
-            const btn = document.getElementById('sendPlayBtn');
-            const box = document.getElementById('playResponseBox');
-
-            btn.disabled = true;
-            btn.innerHTML = `<span>Sending...</span><svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
-
-            const startTime = performance.now();
-            try {
-                const res = await fetch('/api/v1/predict', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: userId, prompt: prompt })
-                });
-                const latency = Math.round(performance.now() - startTime);
-                const data = await res.json();
-
-                if (res.ok) {
-                    box.classList.remove('hidden');
-                    document.getElementById('playTraceId').innerText = `Trace: ${data.trace_id}`;
-                    document.getElementById('playMode').innerText = data.routing_mode.toUpperCase();
-                    document.getElementById('playModel').innerText = data.model_used;
-                    document.getElementById('playLatency').innerText = latency;
-                    document.getElementById('playOutputText').innerText = data.response;
-                } else {
-                    alert(`Error (${res.status}): ${data.detail || 'Prediction request failed.'}`);
-                }
-            } catch (err) {
-                alert(`Network Error: ${err.message}`);
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = `<span>Send Test Prediction</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>`;
-                // Refresh system state to fetch recent side-by-side completion
-                setTimeout(fetchSystemState, 1500);
+            `;
+                }).join('');
             }
-        }
 
-        async function emergencyKill() {
-            await fetch('/admin/config', {
-                method: 'POST',
-                headers: getHeaders(),
-                body: JSON.stringify({ shadow_enabled_global: false })
-            });
+            function escapeHtml(str) {
+                if (!str) return '';
+                return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            }
+
+            async function startCanary() {
+                const name = document.getElementById('canaryExpName').value || 'canary_exp';
+                const score = parseFloat(document.getElementById('minJudgeScore').value) || 3.5;
+                await fetch('/admin/canary/start', {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ experiment_name: name, min_judge_score: score })
+                });
+                fetchSystemState();
+            }
+
+            async function stepCanary() {
+                await fetch('/admin/canary/step', { method: 'POST', headers: getHeaders() });
+                fetchSystemState();
+            }
+
+            async function rollbackCanary() {
+                await fetch('/admin/canary/rollback', {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ reason: 'Manual operator rollback' })
+                });
+                fetchSystemState();
+            }
+
+            function setPromptPreset(text) {
+                document.getElementById('playPrompt').value = text;
+            }
+
+            async function sendPlaygroundPrediction() {
+                const userId = document.getElementById('playUserId').value || 'usr_alpha_101';
+                const prompt = document.getElementById('playPrompt').value || 'Test prompt';
+                const btn = document.getElementById('sendPlayBtn');
+                const box = document.getElementById('playResponseBox');
+
+                btn.disabled = true;
+                btn.innerHTML = `<span>Sending...</span><svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+
+                const startTime = performance.now();
+                try {
+                    const res = await fetch('/api/v1/predict', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: userId, prompt: prompt })
+                    });
+                    const latency = Math.round(performance.now() - startTime);
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        box.classList.remove('hidden');
+                        const inlineBox = document.getElementById('inlineShadowBox');
+                        if (inlineBox) inlineBox.classList.add('hidden');
+                        window.currentTraceId = data.trace_id;
+                        window.hasAutoScrolledForTrace = false;
+                        document.getElementById('playTraceId').innerText = `Trace: ${data.trace_id}`;
+                        document.getElementById('playMode').innerText = data.routing_mode.toUpperCase();
+                        document.getElementById('playModel').innerText = data.model_used;
+                        document.getElementById('playLatency').innerText = latency;
+                        document.getElementById('playOutputText').innerText = data.response;
+                        
+                        // Reset banner to loading amber state
+                        const banner = document.getElementById('shadowStatusBanner');
+                        const spinner = document.getElementById('shadowBannerSpinner');
+                        const bannerText = document.getElementById('shadowBannerText');
+                        if (banner && bannerText) {
+                            banner.className = "text-xs text-amber-400/90 bg-amber-950/30 border border-amber-500/20 p-2.5 rounded flex items-center gap-2";
+                            if (spinner) spinner.classList.remove('hidden');
+                            bannerText.innerText = "Shadow evaluation enqueued to Redis! Background worker executing challenger completion & LLM-as-a-Judge scoring below...";
+                        }
+                    } else {
+                        alert(`Error (${res.status}): ${data.detail || 'Prediction request failed.'}`);
+                    }
+                } catch (err) {
+                    alert(`Network Error: ${err.message}`);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>Send Test Prediction</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>`;
+                    // Refresh system state after background evaluator finishes (~2.5s, 4.5s, 7s)
+                    setTimeout(fetchSystemState, 2500);
+                    setTimeout(fetchSystemState, 4500);
+                    setTimeout(fetchSystemState, 7000);
+                }
+            }
+
+            async function emergencyKill() {
+                await fetch('/admin/config', {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ shadow_enabled_global: false })
+                });
+                fetchSystemState();
+            }
+
+
+            // Auto refresh
+            setInterval(fetchSystemState, 5000);
             fetchSystemState();
-        }
-
-
-        // Auto refresh
-        setInterval(fetchSystemState, 5000);
-        fetchSystemState();
-    </script>
+        </script>
 </body>
+
 </html>
