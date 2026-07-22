@@ -24,6 +24,8 @@ services:
       - ../.env
     volumes:
       - ../config:/app/config
+      - ../evaluations.db:/app/evaluations.db
+
 
   evaluation-worker:
     build: 
@@ -33,11 +35,15 @@ services:
     command: python -m src.evaluation.evaluator
     depends_on:
       - redis
+    env_file:
+      - ../.env
     environment:
       - REDIS_URL=redis://redis:6379/0
     restart: unless-stopped
     volumes:
       - ../config:/app/config
+      - ../evaluations.db:/app/evaluations.db
+
 
 
   prometheus:
