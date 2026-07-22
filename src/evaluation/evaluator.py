@@ -1,11 +1,14 @@
+import time
 import asyncio
 from typing import Dict, Any
 from collections import deque
 from src.core.logging import logger
 from src.storage.redis_store import dequeue_evaluation, push_to_dead_letter
 from src.storage.sqlite_store import save_evaluation, log_experiment_event, get_connection
-from src.evaluation.metrics.quality import calculate_quality_metrics
+from src.evaluation.metrics.quality import evaluate_semantic_quality_with_judge, get_token_count
 from src.evaluation.metrics.statistical import calculate_welchs_ttest
+from src.services.llm_client import generate_completion
+from src.api.middleware.metrics import llm_request_latency_seconds, llm_token_cost_dollars, COST_MAPPING
 
 # In-memory arrays to hold sliding windows of latencies for statistical calculation
 control_latencies: deque = deque(maxlen=1000)
@@ -15,21 +18,46 @@ MIN_STATISTICAL_SAMPLES = 30
 async def process_payload(payload: Dict[str, Any]):
     trace_id = payload.get("trace_id")
     try:
-        # 1. Quality Metrics
-        quality = calculate_quality_metrics(
-            payload.get("prompt", ""),
-            payload.get("control_response", ""),
-            payload.get("challenger_response", "")
+        prompt = payload.get("prompt", "")
+        control_response = payload.get("control_response", "")
+        control_model = payload.get("control_model", "")
+        challenger_model = payload.get("challenger_model", "")
+        
+        # 1. Execute Shadow LLM call if not pre-computed by gateway (Decoupled Architecture)
+        if "challenger_response" not in payload or payload.get("challenger_response") is None:
+            start_time = time.time()
+            challenger_response = await generate_completion(challenger_model, prompt, is_shadow=True)
+            challenger_latency_ms = (time.time() - start_time) * 1000.0
+            
+            payload["challenger_response"] = challenger_response
+            payload["challenger_latency_ms"] = challenger_latency_ms
+            
+            # Telemetry for worker-executed shadow completion
+            llm_request_latency_seconds.labels(model_name=challenger_model, routing_mode="shadow").observe(challenger_latency_ms / 1000.0)
+            tokens = get_token_count(prompt) + get_token_count(challenger_response)
+            cost = (tokens / 1000.0) * COST_MAPPING.get(challenger_model, 0.0)
+            llm_token_cost_dollars.labels(model_name=challenger_model).inc(cost)
+        else:
+            challenger_response = payload.get("challenger_response", "")
+            challenger_latency_ms = float(payload.get("challenger_latency_ms", 0.0))
+
+        # 2. Semantic & LLM-as-a-Judge Evaluation
+        quality_results = await evaluate_semantic_quality_with_judge(
+            prompt=prompt,
+            control_resp=control_response,
+            challenger_resp=challenger_response
         )
         
-        # 2. Append to statistical window (keep last 1000 to prevent unbounded memory growth)
+        payload["judge_score"] = quality_results.get("judge_score", 0.0)
+        payload["semantic_equivalence"] = quality_results.get("semantic_equivalence", 0.0)
+        payload["judge_reasoning"] = quality_results.get("judge_reasoning", "")
+        
+        # 3. Append to statistical window (keep last 1000 to prevent unbounded memory growth)
         c_lat = float(payload.get("control_latency_ms", 0))
-        sh_lat = float(payload.get("challenger_latency_ms", 0))
-        
         control_latencies.append(c_lat)
-        challenger_latencies.append(sh_lat)
+        challenger_latencies.append(challenger_latency_ms)
         
-        # 3. Calculate statistics if we have enough samples
+        # 4. Calculate statistics if we have enough samples
         stats_result = None
         if len(control_latencies) >= MIN_STATISTICAL_SAMPLES:
             stats_result = calculate_welchs_ttest(control_latencies, challenger_latencies)
@@ -47,19 +75,19 @@ async def process_payload(payload: Dict[str, Any]):
                         "sample_size": len(control_latencies)
                     })
         
-        # 4. Save durable record to SQLite
+        # 5. Save durable record to SQLite
         save_evaluation(payload)
         
         logger.info("Successfully evaluated shadow payload", 
                     trace_id=trace_id, 
-                    quality_metrics=quality, 
+                    quality_metrics=quality_results, 
                     statistics=stats_result)
                     
     except Exception as e:
         logger.error("Error evaluating payload", trace_id=trace_id, error=str(e))
         # Dead-letter: push failed payload so it can be inspected and replayed.
-        # Nothing is silently lost.
         await push_to_dead_letter(payload, str(e))
+
 
 async def warmup_from_sqlite():
     """Pre-populate latency windows from durable SQLite history on startup."""

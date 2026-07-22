@@ -32,9 +32,26 @@ def init_db():
                 challenger_model TEXT NOT NULL,
                 challenger_response TEXT NOT NULL,
                 challenger_latency_ms REAL NOT NULL,
+                judge_score REAL DEFAULT 0.0,
+                semantic_equivalence REAL DEFAULT 0.0,
+                judge_reasoning TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Migrations for existing DB schema
+        try:
+            cursor.execute("ALTER TABLE evaluations ADD COLUMN judge_score REAL DEFAULT 0.0")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE evaluations ADD COLUMN semantic_equivalence REAL DEFAULT 0.0")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE evaluations ADD COLUMN judge_reasoning TEXT")
+        except Exception:
+            pass
+
         # Experiment events table for audit trail
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS experiment_events (
@@ -71,8 +88,9 @@ def save_evaluation(eval_data: Dict[str, Any]):
         cursor.execute("""
             INSERT INTO evaluations (
                 trace_id, prompt, control_model, control_response, control_latency_ms,
-                challenger_model, challenger_response, challenger_latency_ms
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                challenger_model, challenger_response, challenger_latency_ms,
+                judge_score, semantic_equivalence, judge_reasoning
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             eval_data.get('trace_id'),
             eval_data.get('prompt'),
@@ -81,13 +99,17 @@ def save_evaluation(eval_data: Dict[str, Any]):
             eval_data.get('control_latency_ms'),
             eval_data.get('challenger_model'),
             eval_data.get('challenger_response'),
-            eval_data.get('challenger_latency_ms')
+            eval_data.get('challenger_latency_ms'),
+            eval_data.get('judge_score', 0.0),
+            eval_data.get('semantic_equivalence', 0.0),
+            eval_data.get('judge_reasoning', '')
         ))
         conn.commit()
     except Exception as e:
         logger.error("Failed to save evaluation to SQLite", error=str(e))
     finally:
         conn.close()
+
 
 def log_experiment_event(event_type: str, details: dict):
     conn = get_connection()
