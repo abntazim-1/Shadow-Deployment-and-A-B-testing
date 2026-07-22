@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     
     shadow_enabled_global: bool = True
     challenger_traffic_weight: float = 0.5
+    shadow_sample_rate: float = 1.0
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

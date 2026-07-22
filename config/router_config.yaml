@@ -1,2 +1,3 @@
-challenger_traffic_weight: 0.5
+challenger_traffic_weight: 0.0
 shadow_enabled_global: true
+shadow_sample_rate: 1.0

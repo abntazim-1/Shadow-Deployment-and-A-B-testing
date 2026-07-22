@@ -8,11 +8,14 @@ from src.core.logging import logger
 import time
 import threading
 
+import random
+
 class RoutingDecision(BaseModel):
     routing_mode: str  # "control", "challenger", "shadow"
     primary_model_name: str
     shadow_enabled: bool = False
     shadow_model_name: Optional[str] = None
+    shadow_sample_rate: float = 1.0
 
 _config_cache: dict = {}
 _cache_loaded_at: float = 0.0
@@ -57,18 +60,23 @@ def determine_route(user_id: str) -> RoutingDecision:
     dynamic_config = load_router_config()
     shadow_enabled_global = dynamic_config.get("shadow_enabled_global", settings.shadow_enabled_global)
     challenger_weight = dynamic_config.get("challenger_traffic_weight", settings.challenger_traffic_weight)
+    sample_rate = float(dynamic_config.get("shadow_sample_rate", settings.shadow_sample_rate))
 
     # 2. Check A/B Assignment
     if is_challenger_assigned(user_id, settings.experiment_salt, challenger_weight):
         return RoutingDecision(
             routing_mode="challenger",
-            primary_model_name=settings.shadow_model_name
+            primary_model_name=settings.shadow_model_name,
+            shadow_sample_rate=sample_rate
         )
         
     # 3. Baseline / Shadow assignment
+    should_shadow = bool(shadow_enabled_global) and (random.random() < sample_rate)
     return RoutingDecision(
-        routing_mode="shadow" if shadow_enabled_global else "control",
+        routing_mode="shadow" if should_shadow else "control",
         primary_model_name=settings.primary_model_name,
-        shadow_enabled=bool(shadow_enabled_global),
-        shadow_model_name=settings.shadow_model_name if shadow_enabled_global else None
+        shadow_enabled=should_shadow,
+        shadow_model_name=settings.shadow_model_name if should_shadow else None,
+        shadow_sample_rate=sample_rate
     )
+
