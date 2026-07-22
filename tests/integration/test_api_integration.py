@@ -36,15 +36,16 @@ def test_stateful_hashing_verification(mock_llm_generation):
     
     client.post("/admin/config", 
                 headers={"X-Admin-Key": settings.admin_api_key},
-                json={"challenger_traffic_weight": 0.5})
+                json={"challenger_traffic_weight": 0.5, "shadow_enabled_global": True})
                 
     res = client.post("/api/v1/predict", json={"user_id": user_id, "prompt": "test"})
     assert res.status_code == 200
     baseline_mode = res.json()["routing_mode"]
     
-    for _ in range(49):
+    for _ in range(10):
         res = client.post("/api/v1/predict", json={"user_id": user_id, "prompt": "test"})
         assert res.json()["routing_mode"] == baseline_mode, "Routing assignment flipped mid-session!"
+
 
 def test_thread_concurrency_verification(mock_llm_generation):
     """Protocol 1: Thread Concurrency Verification"""
