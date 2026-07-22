@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Shadow Deployment & Canary Console</title>
+    <!-- Modern Styling via Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+    <!-- Top Navigation Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-indigo-600 rounded-lg shadow-lg shadow-indigo-500/30">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-white tracking-wide">LLM Shadow & Canary Platform</h1>
+                    <p class="text-xs text-slate-400">Enterprise A/B Evaluation & Progressive Delivery</p>
+                </div>
+            </div>
+
+            <!-- Admin Key Input & Live Status -->
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-md border border-slate-700">
+                    <span class="text-xs text-slate-400">Admin Key:</span>
+                    <input type="password" id="adminKey" value="secret_admin_key_123" class="bg-transparent text-xs text-white outline-none w-32 focus:w-48 transition-all">
+                </div>
+                <button onclick="fetchSystemState()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-md border border-slate-700 transition">
+                    Refresh State
+                </button>
+                <button onclick="emergencyKill()" class="px-3 py-1.5 bg-red-600/90 hover:bg-red-500 text-xs font-semibold text-white rounded-md shadow-md shadow-red-600/30 transition">
+                    Kill Switch (Stop Shadow)
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-6 py-8">
+        <!-- Top Metric Highlights -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Global Shadow Status</div>
+                <div id="shadowStatus" class="text-2xl font-bold text-emerald-400">Active</div>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Challenger Weight</div>
+                <div id="trafficWeight" class="text-2xl font-bold text-indigo-400">50%</div>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Canary Status</div>
+                <div id="canaryStatus" class="text-2xl font-bold text-amber-400">Idle</div>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                <div class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Recent Evaluations</div>
+                <div id="evalCount" class="text-2xl font-bold text-cyan-400">0</div>
+            </div>
+        </div>
+
+        <!-- Canary Control Banner -->
+        <section class="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-8">
+            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                Canary Progressive Rollout Board
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <input type="text" id="canaryExpName" placeholder="Experiment Name (e.g. gemini-v2-test)" class="bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-white focus:border-indigo-500 outline-none">
+                <input type="number" id="minJudgeScore" placeholder="Min Judge Guardrail (e.g. 3.5)" value="3.5" step="0.1" class="bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-white focus:border-indigo-500 outline-none">
+                <div class="flex space-x-2">
+                    <button onclick="startCanary()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2 rounded-lg text-sm transition">
+                        Start Canary (5%)
+                    </button>
+                    <button onclick="stepCanary()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-4 py-2 rounded-lg text-sm transition">
+                        Next Step
+                    </button>
+                    <button onclick="rollbackCanary()" class="bg-red-600 hover:bg-red-500 text-white font-medium px-4 py-2 rounded-lg text-sm transition">
+                        Rollback
+                    </button>
+                </div>
+            </div>
+            <div id="canaryDetails" class="text-xs text-slate-400 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                Canary Idle. Start a rollout to shift traffic progressively with LLM-as-a-Judge guardrails.
+            </div>
+        </section>
+
+        <!-- Side-by-Side Evaluation Inspector -->
+        <section class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    Live Side-by-Side Completion Inspector
+                </h2>
+                <div class="text-xs text-slate-400">Auto-refreshing every 5s</div>
+            </div>
+
+            <div id="evaluationList" class="space-y-4">
+                <div class="text-center py-8 text-slate-500 text-sm">No evaluation records found yet. Send requests to /api/v1/predict to see live LLM judge diffs.</div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const getHeaders = () => ({
+            'X-Admin-Key': document.getElementById('adminKey').value,
+            'Content-Type': 'application/json'
+        });
+
+        async function fetchSystemState() {
+            try {
+                // Fetch config
+                const cfgRes = await fetch('/admin/config', { headers: getHeaders() });
+                const cfg = await cfgRes.json();
+                document.getElementById('shadowStatus').innerText = cfg.shadow_enabled_global ? 'Active' : 'Disabled';
+                document.getElementById('shadowStatus').className = cfg.shadow_enabled_global ? 'text-2xl font-bold text-emerald-400' : 'text-2xl font-bold text-red-400';
+                document.getElementById('trafficWeight').innerText = `${((cfg.challenger_traffic_weight || 0) * 100).toFixed(0)}%`;
+
+                // Fetch canary status
+                const canRes = await fetch('/admin/canary/status', { headers: getHeaders() });
+                const canData = await canRes.json();
+                if (canData.canary) {
+                    document.getElementById('canaryStatus').innerText = canData.canary.status.toUpperCase();
+                    document.getElementById('canaryDetails').innerText = JSON.stringify(canData.canary, null, 2);
+                }
+
+                // Fetch evaluations
+                const evRes = await fetch('/admin/evaluations/recent?limit=10', { headers: getHeaders() });
+                const evData = await evRes.json();
+                if (evData.items) {
+                    document.getElementById('evalCount').innerText = evData.count;
+                    renderEvaluations(evData.items);
+                }
+            } catch (err) {
+                console.error("Error fetching system state:", err);
+            }
+        }
+
+        function renderEvaluations(items) {
+            const container = document.getElementById('evaluationList');
+            if (!items.length) {
+                container.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">No evaluation records found yet. Send requests to /api/v1/predict to see live LLM judge diffs.</div>`;
+                return;
+            }
+            container.innerHTML = items.map(ev => `
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-1 rounded">Trace: ${ev.trace_id.substring(0,8)}...</span>
+                            <span class="text-xs text-slate-400">${new Date(ev.created_at).toLocaleTimeString()}</span>
+                        </div>
+                        <div class="flex items-center space-x-4 text-xs font-medium">
+                            <span class="text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-md border border-amber-400/20">
+                                LLM Judge: ${ev.judge_score ? ev.judge_score.toFixed(1) : 'N/A'} / 5.0
+                            </span>
+                            <span class="text-cyan-400 bg-cyan-400/10 px-2.5 py-1 rounded-md border border-cyan-400/20">
+                                Equivalence: ${(ev.semantic_equivalence * 100).toFixed(0)}%
+                            </span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Prompt:</span>
+                        <p class="text-sm text-slate-200 mt-1 font-mono bg-slate-900/60 p-2.5 rounded border border-slate-800/80">${escapeHtml(ev.prompt)}</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-slate-900/40 border border-slate-800 rounded-lg p-3">
+                            <div class="flex justify-between items-center text-xs text-indigo-400 font-semibold mb-2">
+                                <span>Control (${ev.control_model})</span>
+                                <span>${ev.control_latency_ms.toFixed(0)} ms</span>
+                            </div>
+                            <p class="text-xs text-slate-300 whitespace-pre-wrap">${escapeHtml(ev.control_response)}</p>
+                        </div>
+                        <div class="bg-slate-900/40 border border-slate-800 rounded-lg p-3">
+                            <div class="flex justify-between items-center text-xs text-purple-400 font-semibold mb-2">
+                                <span>Challenger (${ev.challenger_model})</span>
+                                <span>${ev.challenger_latency_ms.toFixed(0)} ms</span>
+                            </div>
+                            <p class="text-xs text-slate-300 whitespace-pre-wrap">${escapeHtml(ev.challenger_response)}</p>
+                        </div>
+                    </div>
+
+                    ${ev.judge_reasoning ? `
+                        <div class="text-xs text-slate-400 bg-slate-900 p-2.5 rounded border border-slate-800">
+                            <strong class="text-slate-300">Judge Reasoning:</strong> ${escapeHtml(ev.judge_reasoning)}
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        async function startCanary() {
+            const name = document.getElementById('canaryExpName').value || 'canary_exp';
+            const score = parseFloat(document.getElementById('minJudgeScore').value) || 3.5;
+            await fetch('/admin/canary/start', {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ experiment_name: name, min_judge_score: score })
+            });
+            fetchSystemState();
+        }
+
+        async function stepCanary() {
+            await fetch('/admin/canary/step', { method: 'POST', headers: getHeaders() });
+            fetchSystemState();
+        }
+
+        async function rollbackCanary() {
+            await fetch('/admin/canary/rollback', {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ reason: 'Manual operator rollback' })
+            });
+            fetchSystemState();
+        }
+
+        async function emergencyKill() {
+            await fetch('/admin/config', {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ shadow_enabled_global: false })
+            });
+            fetchSystemState();
+        }
+
+        // Auto refresh
+        setInterval(fetchSystemState, 5000);
+        fetchSystemState();
+    </script>
+</body>
+</html>

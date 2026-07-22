@@ -63,10 +63,21 @@ app.include_router(v1_router, prefix="/api/v1")
 app.include_router(health_router, prefix="")
 app.include_router(admin_router, prefix="/admin")
 
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from pathlib import Path
+
 @app.get("/metrics")
 def metrics():
     return get_metrics_endpoint()
 
+@app.get("/console", response_class=HTMLResponse)
+def get_console():
+    console_path = Path("src/api/static/console.html")
+    if console_path.exists():
+        return FileResponse(console_path)
+    return HTMLResponse("<h1>Web Console file not found</h1>", status_code=404)
+
 @app.get("/")
 def root():
-    return {"status": "up and running"}
+    return {"status": "up and running", "console_url": "/console"}
+
