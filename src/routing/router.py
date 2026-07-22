@@ -73,10 +73,11 @@ def determine_route(user_id: str) -> RoutingDecision:
     # 3. Baseline / Shadow assignment
     should_shadow = bool(shadow_enabled_global) and (random.random() < sample_rate)
     return RoutingDecision(
-        routing_mode="shadow" if should_shadow else "control",
+        routing_mode="shadow" if shadow_enabled_global else "control",
         primary_model_name=settings.primary_model_name,
         shadow_enabled=should_shadow,
         shadow_model_name=settings.shadow_model_name if should_shadow else None,
         shadow_sample_rate=sample_rate
     )
+
 
